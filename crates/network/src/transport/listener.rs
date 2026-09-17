@@ -20,7 +20,7 @@ impl TransportLayerListener {
 
     pub async fn stop(&mut self) -> Result<(), TransportLayerError> {
         match self {
-            Self::RakNet(listener) => listener.stop(),
+            Self::RakNet(listener) => listener.stop().await,
         }
 
         Ok(())
