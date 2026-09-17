@@ -4,5 +4,5 @@ use bedrock_macros::{packet, ProtoCodec};
 #[derive(ProtoCodec, Clone, Debug)]
 pub struct JigsawStructureDataPacket {
     #[nbt]
-    jigsaw_structure_data_tag: nbtx::Value,
+    pub jigsaw_structure_data_tag: nbtx::Value,
 }
