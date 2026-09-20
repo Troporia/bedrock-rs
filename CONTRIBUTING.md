@@ -1,112 +1,118 @@
 # Contributing to bedrock-rs
 
-Thank you for contributing to **bedrock-rs**.
-This document explains the expected workflow for code changes, quality checks, and pull requests.
+How to set up, change, check, and submit work on this workspace. `README.md` says what the crates
+are; `CLAUDE.md` is the working method for agents and reads as a good one for people too.
 
-## Before You Start
+## Before you start
 
-1. Fork the repository and create a branch from `main`.
-2. Keep your branch focused on a single change (bug fix, feature, refactor, etc.).
-3. If possible, discuss larger changes in an issue before implementation.
+1. Fork the repository and branch from `main`.
+2. One branch, one change: a bug fix, a feature, a refactor, or a protocol version bump.
+3. Discuss larger changes in an issue or on Discord first.
 
-## Development Setup
+## Setup
 
-Install Rust toolchain and required components:
-
-```bash
+```sh
 rustup toolchain install stable
 rustup component add rustfmt clippy
-```
-
-Clone and enter the project:
-
-```bash
 git clone https://github.com/bedrock-crustaceans/bedrock-rs.git
 cd bedrock-rs
+cargo build --workspace --exclude bedrock_level
 ```
 
-## Code Style and Quality Checks
+`bedrock_level` compiles Mojang's LevelDB from source through `leveldb-sys`, so it also needs
+`cmake` and a C/C++ compiler. The vendored zlib does not build under GCC 14 with its default
+warnings-as-errors for implicit declarations; until that is fixed upstream, leave `bedrock_level`
+out of local builds unless you are working on it, or build with an older compiler.
 
-When making code changes, run these checks before opening a PR:
+`raknet-tokio` and `leveldb-sys` are unpinned git dependencies, and `Cargo.lock` is not committed.
+A fresh clone resolves their `main` branch; an old local lock can lag behind the code. If
+`bedrock_network` stops compiling against the RakNet API, run `cargo update -p raknet-tokio`.
 
-```bash
+## Where things live
+
+| Path | What |
+| --- | --- |
+| `src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
+| `crates/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `addon`, `form`, `level`, `shared`. `README.md` says what each does. |
+| `xtask/` | The protocol code generator. `cargo xtask` is the whole interface. |
+| `examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
+
+## Workflow: test first
+
+Every behaviour change starts with a test that fails for the reason you are about to fix. Write
+it, watch it fail, make it pass with the smallest change, then clean up with the test guarding
+you. The bytes on the wire are the oracle for protocol work: a packet is right when it
+deserializes a capture from a real client and serializes back to the same bytes.
+
+`CLAUDE.md` walks through the loop step by step and has the test shapes to copy.
+
+## Checks
+
+Run before opening a PR. CI runs the same three jobs on every push and pull request.
+
+```sh
 cargo fmt --all
-cargo check --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --all-features   # CI sets RUSTFLAGS=-Dwarnings
 cargo test --workspace
 ```
 
-If you want a quick local validation pass, you can run:
+While `bedrock_level` does not build on your machine, append `--exclude bedrock_level` to the
+`clippy` and `test` lines and say so in the PR.
 
-```bash
-cargo fmt --all -- --check
-cargo check --workspace
+Narrow the loop while you work:
+
+```sh
+cargo test -p bedrock_protocol <test_name>       # one test, default feature = newest version only
+cargo test -p bedrock_protocol --all-features    # every version; about five times the compile time
+cargo run --example server --features network,protocol-v2193,protocol-unknown
 ```
 
-## Working with Features and Crates
+## Protocol changes
 
-This workspace is modular; some code paths are behind feature flags.
-When your change touches feature-gated logic, validate with appropriate feature sets:
+Versions are diffs in `crates/protocol/def/versions.def.rs`, expanded by `cargo xtask`. After any
+edit there or under `crates/protocol/src/version/`:
 
-```bash
-cargo check --all-features
-cargo test --all-features
+```sh
+cargo xtask && cargo fmt --all
 ```
 
-For crate-specific changes, also validate the related package directly:
+Commit the regenerated files with the change that caused them. `versions.def.rs` lists, per
+version, only what was added (`+`), replaced (`%`), or removed (`-`); a trailing `^` marks an
+item generic over the version. Unlisted items carry forward. The derive attributes are documented
+in `crates/macros/src/attr.rs`.
 
-```bash
-cargo test -p bedrock_protocol
-```
+## Commits
 
-## Commit Guidelines
+One change per commit, with a subject that says what the commit does. Recent history uses
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and new commits should
+too: `fix: PlayerAuthInput move_vector should be (f32, f32)`,
+`feat: protocol v2169`, `refactor: split up protocol codegen into smaller files`.
 
-1. Use clear commit messages that explain the intent.
-2. Keep commits small and reviewable.
-3. Avoid mixing formatting-only changes with behavioral changes in the same commit.
-4. Any commit message style is acceptable (Conventional Commit or normal/free style).
+- Formatting-only changes are their own commit.
+- Regenerated `generated/` files travel with the change that caused them.
+- The message names the author's intent and nothing else: no tool or assistant attribution lines.
 
-Examples:
+## Pull requests
 
-- `fix(proto): correct packet decode bounds check`
-- `Fix packet decode bounds check in proto`
-- `feat(server): add connection timeout configuration`
-- `Add connection timeout configuration to server builder`
-- `Refactor level key parsing`
+1. Rebase onto `main`.
+2. Fill in the PR template: what changed, why, how you validated it, breaking changes.
+3. Link related issues (`Closes #123`).
+4. Address review with follow-up commits.
 
-## Pull Request Process
+Before requesting review:
 
-1. Ensure your branch is up to date with `main`.
-2. Push your branch and open a Pull Request.
-3. In the PR description, include:
-   - What changed.
-   - Why the change is needed.
-   - How you validated it (commands/results).
-   - Any breaking changes or migration notes.
-4. Link related issues (for example: `Closes #123`).
-5. Respond to review feedback with follow-up commits.
+- [ ] `cargo fmt --all` leaves no diff.
+- [ ] `cargo clippy --workspace --all-targets --all-features` is warning-free.
+- [ ] `cargo test --workspace` passes (state any excluded crate).
+- [ ] A protocol change has a test that failed before it and passes after.
+- [ ] Docs and `examples/server.rs` were updated if behaviour changed.
 
-## PR Checklist
+## Reporting bugs and proposing features
 
-Before requesting review, confirm:
-
-- [ ] Code is formatted with `cargo fmt --all`.
-- [ ] Build passes with `cargo check --workspace`.
-- [ ] Lints pass with `cargo clippy --workspace --all-targets -- -D warnings`.
-- [ ] Tests pass with `cargo test --workspace`.
-- [ ] Relevant feature-flag combinations were checked.
-- [ ] Documentation/examples were updated if behavior changed.
-
-## Reporting Bugs and Proposing Features
-
-When opening an issue:
-
-1. Provide clear reproduction steps.
-2. Include expected vs actual behavior.
-3. Share environment details (OS, Rust version, enabled features).
-4. Include logs/errors and a minimal example if possible.
+Open an issue with reproduction steps, expected versus actual behaviour, your OS, Rust version,
+enabled features, the protocol version, and, for a packet bug, a hex dump of the bytes the client
+sent.
 
 ## Community
 
-For help or discussion, join the project Discord:
-<https://discord.com/invite/VCVcrvt3JC>
+Discord: <https://discord.com/invite/VCVcrvt3JC>
