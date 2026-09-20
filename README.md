@@ -19,40 +19,42 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
 
 ### Crate Breakdown:
 
-- [`bedrock::core`](crates/shared) (`bedrock_shared`)  
+- [`bedrock::core`](crates/libs/shared) (`bedrock_shared`)  
   - Shared data types (vectors, actor runtime/unique IDs, world enums) used across other crates.  
 
-- [`bedrock_protocol_core`](crates/protocol_core) and [`bedrock_macros`](crates/macros)  
+- [`bedrock_protocol_core`](crates/libs/protocol_core) and [`bedrock_macros`](crates/libs/macros)  
   - The `ProtoCodec` traits, packet header, error types, and codecs for primitives.  
   - `#[derive(ProtoCodec)]` and `#[packet(id = ...)]`, which every packet, type, and enum is built from.  
   - Re-exported through `bedrock::protocol`.  
 
-- [`bedrock::protocol`](crates/protocol)  
+- [`bedrock::protocol`](crates/libs/protocol)  
   - Complete implementation of the Minecraft Bedrock protocol.  
   - Support for both server-side and client-side operations.  
   - Multi-protocol compatibility: one feature per protocol version (`protocol-v662` through `protocol-v2193`), each version described as a diff over the previous one and expanded by `cargo xtask`.  
 
-- [`bedrock::network`](crates/network)  
+- [`bedrock::network`](crates/libs/network)  
   - RakNet-based transport layer for accepting, tracking, and communicating with client connections.  
   - Packet batching/codec support, including Zlib/Snappy compression and AES encryption.  
   - Server MOTD (server list ping) construction and connection listener utilities.  
 
-- [`bedrock::auth`](crates/auth)  
+- [`bedrock::auth`](crates/libs/auth)  
   - Validation of Xbox Live login identity chains (JWTs) against Microsoft’s OIDC discovery service.  
   - Support for online, offline, and guest authentication types.  
   - Optional async API, enabled via the `auth-async` feature.  
 
-- [`bedrock::addon`](crates/addon)  
+- [`bedrock::addon`](crates/libs/addon)  
   - Datatypes for defining Minecraft Addon structures.  
   - Serialization and deserialization support for Addons.  
   - A programmatic approach to creating Addons easily.  
 
-- [`bedrock::form`](crates/form)  
+- [`bedrock::form`](crates/libs/form)  
   - Implementation of the JSON form format used by Minecraft Bedrock Edition.  
 
-- [`bedrock::level`](crates/level)  
+- [`bedrock::level`](crates/libs/level)  
   - Data structures for managing Minecraft Bedrock levels.  
-  - Implementation of Bedrock’s level format on top of Mojang’s LevelDB fork (built from source; needs `cmake` and a C++ compiler).
+  - Implementation of Bedrock's level format on top of a pure-Rust LevelDB implementation
+    (`rusty-leveldb`) that understands Bedrock's on-disk block compression ids, so no native
+    toolchain is required to build it.
 
 ---
 

@@ -112,29 +112,31 @@ is a valid test input.
 sends back or accepts. Tests in `forms/mod.rs` compare a parsed literal against a hand-built
 value; add to them.
 
-**`level`**: LevelDB keys (`key.rs`), sub-chunks, biomes, player and settings NBT. Oracle: a
-real world; `tests/level.tar.gz` is one, and the tests unpack it into a temp dir. Every reader
-has a writer; a test is `from_disk`, `to_disk`, `from_disk`, equal. `greedy.rs` has a SIMD
-unpacker under `unsafe`; `unpack_nonsimd` is its oracle (`tests/simd.rs` shows the shape).
-The existing integration tests are `#[ignore]`d because the readers are incomplete: un-ignore
-one as your red test. Benches under `benches/` are Criterion; run one before and after a
-performance change and put the numbers in the commit body.
+**`level`**: LevelDB keys (`key.rs`), sub-chunks, biomes, player and settings NBT. The LevelDB
+backend itself is `db.rs` and `iter.rs`, pure Rust on top of `rusty-leveldb`;
+`Database::keys()` is fallible (`Result<Keys<'_>>`). Oracle: a real world; `tests/level.tar.gz`
+is one, and the tests unpack it into a temp dir. Every reader has a writer; a test is
+`from_disk`, `to_disk`, `from_disk`, equal. `greedy.rs` has a SIMD unpacker under `unsafe`;
+`unpack_nonsimd` is its oracle (`tests/simd.rs` shows the shape). The existing integration tests
+are `#[ignore]`d because the readers are incomplete: un-ignore one as your red test. Benches
+under `benches/` are Criterion; run one before and after a performance change and put the
+numbers in the commit body.
 
 **`shared`**: plain data: newtyped IDs, vectors, world enums. Nothing here reads a disk or a
 socket; a unit test beside the type is enough.
 
 ## Facts no config confesses
 
-- `cargo test --workspace` is red on a stock GCC 14 machine because of `bedrock_level`, and red
-  on a stale `Cargo.lock` because of `bedrock_network`. `CONTRIBUTING.md` has the workarounds.
-  Report what you excluded; never present an excluded crate as passing.
-- Git dependencies (`raknet-tokio`, `leveldb-sys`) are unpinned and the lock file is not
-  committed. An API mismatch in `network` or `level` may be upstream drift, not your change:
-  `cargo update -p <dep>` first, then diagnose.
-- `crates/protocol/src/generated/` is output; regenerate, never edit.
-- Feature-gated code compiles only with the feature on: `auth-async`, `level`'s
-  `mojang-leveldb`, `protocol`'s per-version features, and every crate behind the `bedrock`
-  facade. A change that builds under a crate's default features has not been built the way CI
-  builds it (`--all-features`).
+- `cargo test --workspace` is red on a stale `Cargo.lock` because of `bedrock_network`.
+  `CONTRIBUTING.md` has the workaround (`cargo update -p raknet-tokio`). Report what you
+  excluded; never present an excluded crate as passing.
+- `raknet-tokio` is an unpinned git dependency and the lock file is not committed. An API
+  mismatch in `network` may be upstream drift, not your change: `cargo update -p raknet-tokio`
+  first, then diagnose. `level`'s `rusty-leveldb` is also a git dependency but pinned by `rev`
+  in `crates/libs/level/Cargo.toml`.
+- `crates/libs/protocol/src/generated/` is output; regenerate, never edit.
+- Feature-gated code compiles only with the feature on: `auth-async`, `protocol`'s per-version
+  features, and every crate behind the `bedrock` facade. A change that builds under a crate's
+  default features has not been built the way CI builds it (`--all-features`).
 - Errors are `thiserror` enums per crate; a new failure is a new variant, never a `String`.
   Library code propagates with `?`; `unwrap` and `expect` belong in tests, benches and `xtask`.

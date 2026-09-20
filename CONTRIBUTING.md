@@ -16,26 +16,22 @@ rustup toolchain install stable
 rustup component add rustfmt clippy
 git clone https://github.com/bedrock-crustaceans/bedrock-rs.git
 cd bedrock-rs
-cargo build --workspace --exclude bedrock_level
+cargo build --workspace
 ```
 
-`bedrock_level` compiles Mojang's LevelDB from source through `leveldb-sys`, so it also needs
-`cmake` and a C/C++ compiler. The vendored zlib does not build under GCC 14 with its default
-warnings-as-errors for implicit declarations; until that is fixed upstream, leave `bedrock_level`
-out of local builds unless you are working on it, or build with an older compiler.
-
-`raknet-tokio` and `leveldb-sys` are unpinned git dependencies, and `Cargo.lock` is not committed.
-A fresh clone resolves their `main` branch; an old local lock can lag behind the code. If
-`bedrock_network` stops compiling against the RakNet API, run `cargo update -p raknet-tokio`.
+`raknet-tokio` is an unpinned git dependency, and `Cargo.lock` is not committed. A fresh clone
+resolves its `main` branch; an old local lock can lag behind the code. If `bedrock_network` stops
+compiling against the RakNet API, run `cargo update -p raknet-tokio`. `bedrock_level`'s
+`rusty-leveldb` dependency is a git dependency too, but pinned to a `rev`.
 
 ## Where things live
 
 | Path | What |
 | --- | --- |
-| `src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
-| `crates/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `addon`, `form`, `level`, `shared`. `README.md` says what each does. |
+| `crates/bedrock/src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
+| `crates/libs/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `addon`, `form`, `level`, `shared`. `README.md` says what each does. |
 | `xtask/` | The protocol code generator. `cargo xtask` is the whole interface. |
-| `examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
+| `crates/bedrock/examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
 
 ## Workflow: test first
 
@@ -55,9 +51,6 @@ cargo fmt --all
 cargo clippy --workspace --all-targets --all-features   # CI sets RUSTFLAGS=-Dwarnings
 cargo test --workspace
 ```
-
-While `bedrock_level` does not build on your machine, append `--exclude bedrock_level` to the
-`clippy` and `test` lines and say so in the PR.
 
 Narrow the loop while you work:
 

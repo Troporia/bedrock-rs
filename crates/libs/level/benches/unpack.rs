@@ -1,17 +1,5 @@
-use std::fs::File;
-
-use bedrock_level::{
-    Greedy, Lazy,
-    bits::BitArray,
-    db::Database,
-    greedy::GreedyArray,
-    key::{Key, KeyVariant},
-    lazy::LazyArray,
-    subchunk::SubChunk,
-};
+use bedrock_level::{greedy::GreedyArray, lazy::LazyArray};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use flate2::read::GzDecoder;
-use tar::Archive;
 
 fn unpack_regular(bits: u32, packed: &LazyArray) {
     let mut indices = [0; 4096];

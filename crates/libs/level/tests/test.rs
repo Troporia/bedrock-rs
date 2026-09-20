@@ -37,6 +37,36 @@ fn open_test_db() -> Database {
 }
 
 #[test]
+fn reopened_database_reads_back_inserted_value() {
+    let tmp = extract_test_dir();
+    let db_path = tmp.path().join("test_level/db");
+    let db_path = db_path.to_str().unwrap();
+
+    let key = b"bedrock-rs test key";
+    let value = b"bedrock-rs test value".to_vec();
+
+    {
+        let db = Database::open(db_path).unwrap();
+        db.insert(key, value.clone()).unwrap();
+    }
+
+    {
+        let db = Database::open(db_path).unwrap();
+        let read = db.get(key).unwrap().unwrap();
+        assert_eq!(&*read, value.as_slice());
+
+        db.remove(key).unwrap();
+        assert!(db.get(key).unwrap().is_none());
+    }
+}
+
+#[test]
+fn get_of_missing_key_is_none() {
+    let db = open_test_db();
+    assert!(db.get(b"this key does not exist").unwrap().is_none());
+}
+
+#[test]
 #[ignore = "currently not properly implemented"]
 fn read_level_dat() {
     let tmp = extract_test_dir();
@@ -52,7 +82,7 @@ fn read_level_dat() {
 #[ignore = "currently not properly implemented"]
 fn read_local_player() {
     let db = open_test_db();
-    let mut keys = db.keys();
+    let mut keys = db.keys().unwrap();
 
     for kv in &mut keys {
         let mut key_buf = Cursor::new(kv.key());
@@ -70,7 +100,7 @@ fn read_local_player() {
 #[test]
 fn read_biome() {
     let db = open_test_db();
-    let mut keys = db.keys();
+    let mut keys = db.keys().unwrap();
 
     for kv in &mut keys {
         let mut key_buf = Cursor::new(kv.key());
@@ -78,25 +108,22 @@ fn read_biome() {
             continue;
         };
 
-        match key.data {
-            KeyVariant::Biome3d => {
-                let mut value = Cursor::new(kv.value());
-                let biome = Biomes::from_disk::<Greedy, _>(&mut value).unwrap();
+        if key.data == KeyVariant::Biome3d {
+            let mut value = Cursor::new(kv.value());
+            let biome = Biomes::from_disk::<Greedy, _>(&mut value).unwrap();
 
-                let mut writer = Cursor::new(Vec::new());
-                biome.to_disk(&mut writer).unwrap();
+            let mut writer = Cursor::new(Vec::new());
+            biome.to_disk(&mut writer).unwrap();
 
-                let value = writer.into_inner();
-                let mut reader = Cursor::new(value.as_slice());
-                let biome2 = Biomes::from_disk::<Greedy, _>(&mut reader).unwrap();
+            let value = writer.into_inner();
+            let mut reader = Cursor::new(value.as_slice());
+            let biome2 = Biomes::from_disk::<Greedy, _>(&mut reader).unwrap();
 
-                assert_eq!(biome, biome2);
+            assert_eq!(biome, biome2);
 
-                println!("{biome:?}");
+            println!("{biome:?}");
 
-                // break
-            }
-            _ => {}
+            // break
         }
     }
 }
@@ -104,7 +131,7 @@ fn read_biome() {
 #[test]
 fn read_subchunk() {
     let db = open_test_db();
-    let mut keys = db.keys();
+    let mut keys = db.keys().unwrap();
 
     for kv in &mut keys {
         let mut key_buf = Cursor::new(kv.key());
@@ -112,34 +139,31 @@ fn read_subchunk() {
             continue;
         };
 
-        match key.data {
-            KeyVariant::SubChunk { .. } => {
-                println!("{key:?}");
+        if let KeyVariant::SubChunk { .. } = key.data {
+            println!("{key:?}");
 
-                let mut buf = Vec::new();
-                key.serialize(&mut buf).unwrap();
+            let mut buf = Vec::new();
+            key.serialize(&mut buf).unwrap();
 
-                let mut val = Cursor::new(db.get(buf).unwrap().unwrap());
-                let mut chunk = SubChunk::from_disk_lazy(&mut val).unwrap();
+            let mut val = Cursor::new(db.get(buf).unwrap().unwrap());
+            let mut chunk = SubChunk::from_disk_lazy(&mut val).unwrap();
 
-                let layer = chunk.get_layer_mut(0).unwrap();
-                for i in 0..40 {
-                    layer.set(
-                        BlockPosition(0, i, 0),
-                        BlockDef {
-                            name: "test".to_string(),
-                            states: HashMap::from([(
-                                String::from("test2"),
-                                nbtx::Value::Byte(i as i8),
-                            )]),
-                            version: Some([1, 2, 3, 4]),
-                        },
-                    );
-                }
-
-                break;
+            let layer = chunk.get_layer_mut(0).unwrap();
+            for i in 0..40 {
+                layer.set(
+                    BlockPosition(0, i, 0),
+                    BlockDef {
+                        name: "test".to_string(),
+                        states: HashMap::from([(
+                            String::from("test2"),
+                            nbtx::Value::Byte(i as i8),
+                        )]),
+                        version: Some([1, 2, 3, 4]),
+                    },
+                );
             }
-            _ => {}
+
+            break;
         }
     }
 }
