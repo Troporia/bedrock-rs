@@ -6,4 +6,3 @@ pub mod string;
 pub mod tuple;
 pub mod uuid;
 pub mod vec;
-pub mod xuid;

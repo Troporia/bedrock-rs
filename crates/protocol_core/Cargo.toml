@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 nbtx = { workspace = true }
-xuid = { workspace = true }
 
 paste = { workspace = true }
 seq-macro = { workspace = true }

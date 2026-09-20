@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 use std::io::Error as IOError;
-use std::num::{ParseIntError, TryFromIntError};
+use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
 use base64::DecodeError as Base64DecodeError;
@@ -30,8 +30,6 @@ pub enum ProtoCodecError {
     UuidError(#[from] UuidError),
     #[error("Base64 decoding Error: {0}")]
     Base64DecodeError(#[from] Base64DecodeError),
-    #[error("XUID could not be parsed : {0}")]
-    XuidParseError(#[from] ParseIntError),
     /// TODO: This likely hurts performance, but it is *kinda* good for debugging
     #[error("parse value `{0}` to enum variant for {1} enum")]
     InvalidEnumID(String, &'static str),
