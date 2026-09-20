@@ -1,10 +1,14 @@
 [package]
 name = "bedrock"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [workspace]
 members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
 
 [workspace.dependencies]
 thiserror = "2.0"
