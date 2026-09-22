@@ -1,0 +1,19 @@
+[package]
+name = "bedrock_addon"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+uuid = { workspace = true }
+semver = { workspace = true }
+
+image = { workspace = true }
+
+vek = { workspace = true }
+thiserror = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+json_comments = { workspace = true }
+
+walkdir = { workspace = true }

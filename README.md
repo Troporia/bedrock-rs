@@ -19,42 +19,36 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
 
 ### Crate Breakdown:
 
-- [`bedrock::core`](crates/libs/shared) (`bedrock_shared`)  
-  - Shared data types (vectors, actor runtime/unique IDs, world enums) used across other crates.  
+- [`bedrock::shared`](crates/shared)  
+    - Shared data types (vectors, actor runtime/unique IDs, world enums) used across other crates.  
+    - Common codec traits that other crates build their (de)serialization on.  
 
-- [`bedrock_protocol_core`](crates/libs/protocol_core) and [`bedrock_macros`](crates/libs/macros)  
-  - The `ProtoCodec` traits, packet header, error types, and codecs for primitives.  
-  - `#[derive(ProtoCodec)]` and `#[packet(id = ...)]`, which every packet, type, and enum is built from.  
-  - Re-exported through `bedrock::protocol`.  
+- [`bedrock::protocol`](crates/protocol)  
+    - Complete implementation of the Minecraft Bedrock protocol.  
+    - Support for both server-side and client-side operations.  
+    - Multi-protocol compatibility for handling multiple versions seamlessly.  
 
-- [`bedrock::protocol`](crates/libs/protocol)  
-  - Complete implementation of the Minecraft Bedrock protocol.  
-  - Support for both server-side and client-side operations.  
-  - Multi-protocol compatibility: one feature per protocol version (`protocol-v662` through `protocol-v2193`), each version described as a diff over the previous one and expanded by `cargo xtask`.  
+- [`bedrock::network`](crates/network)  
+    - RakNet-based transport layer for accepting, tracking, and communicating with client connections.  
+    - Packet batching/codec support, including Zlib/Snappy compression and AES encryption.  
+    - Server MOTD (server list ping) construction and connection listener utilities.  
 
-- [`bedrock::network`](crates/libs/network)  
-  - RakNet-based transport layer for accepting, tracking, and communicating with client connections.  
-  - Packet batching/codec support, including Zlib/Snappy compression and AES encryption.  
-  - Server MOTD (server list ping) construction and connection listener utilities.  
+- [`bedrock::auth`](crates/auth)  
+    - Validation of Xbox Live login identity chains (JWTs) against Microsoft’s OIDC discovery service.  
+    - Support for online, offline, and guest authentication types.  
+    - Optional async API, enabled via the `auth-async` feature.  
 
-- [`bedrock::auth`](crates/libs/auth)  
-  - Validation of Xbox Live login identity chains (JWTs) against Microsoft’s OIDC discovery service.  
-  - Support for online, offline, and guest authentication types.  
-  - Optional async API, enabled via the `auth-async` feature.  
+- [`bedrock::addon`](crates/addon)  
+    - Datatypes for defining Minecraft Addon structures.  
+    - Serialization and deserialization support for Addons.  
+    - A programmatic approach to creating Addons easily.  
 
-- [`bedrock::addon`](crates/libs/addon)  
-  - Datatypes for defining Minecraft Addon structures.  
-  - Serialization and deserialization support for Addons.  
-  - A programmatic approach to creating Addons easily.  
+- [`bedrock::form`](crates/form)  
+    - Implementation of the JSON form format used by Minecraft Bedrock Edition.  
 
-- [`bedrock::form`](crates/libs/form)  
-  - Implementation of the JSON form format used by Minecraft Bedrock Edition.  
-
-- [`bedrock::level`](crates/libs/level)  
-  - Data structures for managing Minecraft Bedrock levels.  
-  - Implementation of Bedrock's level format on top of a pure-Rust LevelDB implementation
-    (`rusty-leveldb`) that understands Bedrock's on-disk block compression ids, so no native
-    toolchain is required to build it.
+- [`bedrock::level`](crates/level)  
+    - Data structures for managing Minecraft Bedrock levels.  
+    - Implementation of Bedrock’s level format using Rust’s LevelDB.
 
 ---
 
@@ -70,7 +64,6 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
 ## Getting Started
 
 To use **bedrock-rs** in your Rust project, add the following to your `Cargo.toml`:  
-
 ```toml
 [dependencies]
 bedrock = { git = "https://github.com/bedrock-crustaceans/bedrock-rs.git", features = ["full"] }
@@ -98,8 +91,6 @@ Want to join this incredible group? Check out our Contributing Guide and make yo
 
 We welcome contributions of all kinds, including bug fixes, new features, docs updates, and improvements across crates.  
 Please read the full contribution guide here: **[CONTRIBUTING.md](CONTRIBUTING.md)**  
-It covers setup, where things live, the test-first workflow, the checks CI runs, and how protocol versions are added.
-[CLAUDE.md](CLAUDE.md) is the step-by-step working method used by coding agents on this repo.  
 
 For guidance or collaboration, connect with the community on Discord.  
 

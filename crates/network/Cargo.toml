@@ -1,0 +1,37 @@
+[package]
+name = "bedrock_network"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bedrock_protocol = { path = "../protocol" }
+bedrock_protocol_core = { path = "../protocol_core" }
+
+tokio = { workspace = true }
+byteorder = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+flate2 = { workspace = true }
+snap = { workspace = true }
+
+p384 = { version = "0.14.0-rc.8", features = ["ecdh", "ecdsa"] }
+sha2 = "0.11.0"
+aes = "0.9.0-rc.4"
+ctr = "0.10.0-rc.4"
+serde = { workspace = true }
+
+raknet-tokio = { git = "https://github.com/bedrock-crustaceans/raknet.git" }
+
+# QUIC transport for an internal, trusted hop between two of your own processes (see
+# transport/quic.rs) - an already-scaffolded-but-dead TransportLayerConnection::Quic
+# variant, filled in here.
+# quinn, not the s2n_quic the original TODO comment named: s2n-quic 1.88.0 has a real
+# upstream bug (its own Token struct is missing derives its own pinned s2n-codec/
+# zerocopy dependency now requires - an internal inconsistency in their own release,
+# confirmed by trying to build against it), quinn is the other major, more commonly
+# used Rust QUIC implementation and doesn't have that landmine.
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rcgen = "0.13"
+
