@@ -28,10 +28,10 @@ compiling against the RakNet API, run `cargo update -p raknet-tokio`. `bedrock_l
 
 | Path | What |
 | --- | --- |
-| `crates/bedrock/src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
-| `crates/libs/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `addon`, `form`, `level`, `shared`. `README.md` says what each does. |
+| `bedrock/src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
+| `crates/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `form`, `level`, `shared`. `README.md` says what each does. |
 | `xtask/` | The protocol code generator. `cargo xtask` is the whole interface. |
-| `crates/bedrock/examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
+| `bedrock/examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
 
 ## Workflow: test first
 
@@ -98,7 +98,7 @@ Before requesting review:
 - [ ] `cargo clippy --workspace --all-targets --all-features` is warning-free.
 - [ ] `cargo test --workspace` passes (state any excluded crate).
 - [ ] A protocol change has a test that failed before it and passes after.
-- [ ] Docs and `examples/server.rs` were updated if behaviour changed.
+- [ ] Docs and `bedrock/examples/server.rs` were updated if behaviour changed.
 
 ## Reporting bugs and proposing features
 

@@ -9,11 +9,6 @@ pub mod level {
     pub use ::bedrock_level::*;
 }
 
-#[cfg(feature = "addon")]
-pub mod addon {
-    pub use ::bedrock_addon::*;
-}
-
 #[cfg(feature = "auth")]
 pub mod auth {
     pub use ::bedrock_auth::*;

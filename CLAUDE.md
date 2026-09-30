@@ -73,8 +73,8 @@ mod tests {
 }
 ```
 
-The same shape serves JSON (`facet_json::from_str` then `to_string` in `form`, `serde_json` in
-`addon`) and LevelDB values (`from_disk` then `to_disk` in `level`).
+The same shape serves JSON (`facet_json::from_str` then `to_string` in `form`) and LevelDB
+values (`from_disk` then `to_disk` in `level`).
 
 ## Per crate
 
@@ -102,12 +102,6 @@ call. Tests use a token signed by a key you generate in the test and an `AuthOID
 around that key; fetching stays out of tests. The `async` feature duplicates `fetch`; a change
 to one is a change to both.
 
-**`addon`**: serde types for `manifest.json`, blocks, items, languages, and `import`/`export`
-over a directory. Oracle: files from a vanilla or marketplace pack. Test parsing on an inline
-JSON string first; test `import` and `export` against a directory you write under
-`tempfile::tempdir()`. JSON here may carry comments (`json_comments`), so a capture with comments
-is a valid test input.
-
 **`form`**: the JSON forms the client renders, via `facet_json`. Oracle: the JSON the client
 sends back or accepts. Tests in `forms/mod.rs` compare a parsed literal against a hand-built
 value; add to them.
@@ -133,8 +127,8 @@ socket; a unit test beside the type is enough.
 - `raknet-tokio` is an unpinned git dependency and the lock file is not committed. An API
   mismatch in `network` may be upstream drift, not your change: `cargo update -p raknet-tokio`
   first, then diagnose. `level`'s `rusty-leveldb` is also a git dependency but pinned by `rev`
-  in `crates/libs/level/Cargo.toml`.
-- `crates/libs/protocol/src/generated/` is output; regenerate, never edit.
+  in `crates/level/Cargo.toml`.
+- `crates/protocol/src/generated/` is output; regenerate, never edit.
 - Feature-gated code compiles only with the feature on: `auth-async`, `protocol`'s per-version
   features, and every crate behind the `bedrock` facade. A change that builds under a crate's
   default features has not been built the way CI builds it (`--all-features`).
