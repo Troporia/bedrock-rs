@@ -127,8 +127,8 @@ socket; a unit test beside the type is enough.
 - `raknet-tokio` is an unpinned git dependency and the lock file is not committed. An API
   mismatch in `network` may be upstream drift, not your change: `cargo update -p raknet-tokio`
   first, then diagnose. `level`'s `rusty-leveldb` is also a git dependency but pinned by `rev`
-  in `crates/libs/level/Cargo.toml`.
-- `crates/libs/protocol/src/generated/` is output; regenerate, never edit.
+  in `crates/level/Cargo.toml`.
+- `crates/protocol/src/generated/` is output; regenerate, never edit.
 - Feature-gated code compiles only with the feature on: `auth-async`, `protocol`'s per-version
   features, and every crate behind the `bedrock` facade. A change that builds under a crate's
   default features has not been built the way CI builds it (`--all-features`).

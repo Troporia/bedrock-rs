@@ -19,33 +19,33 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
 
 ### Crate Breakdown:
 
-- [`bedrock::core`](crates/libs/shared) (`bedrock_shared`)  
+- [`bedrock::core`](crates/shared) (`bedrock_shared`)  
   - Shared data types (vectors, actor runtime/unique IDs, world enums) used across other crates.  
 
-- [`bedrock_protocol_core`](crates/libs/protocol_core) and [`bedrock_macros`](crates/libs/macros)  
+- [`bedrock_protocol_core`](crates/protocol_core) and [`bedrock_macros`](crates/macros)  
   - The `ProtoCodec` traits, packet header, error types, and codecs for primitives.  
   - `#[derive(ProtoCodec)]` and `#[packet(id = ...)]`, which every packet, type, and enum is built from.  
   - Re-exported through `bedrock::protocol`.  
 
-- [`bedrock::protocol`](crates/libs/protocol)  
+- [`bedrock::protocol`](crates/protocol)  
   - Complete implementation of the Minecraft Bedrock protocol.  
   - Support for both server-side and client-side operations.  
   - Multi-protocol compatibility: one feature per protocol version (`protocol-v662` through `protocol-v2193`), each version described as a diff over the previous one and expanded by `cargo xtask`.  
 
-- [`bedrock::network`](crates/libs/network)  
+- [`bedrock::network`](crates/network)  
   - RakNet-based transport layer for accepting, tracking, and communicating with client connections.  
   - Packet batching/codec support, including Zlib/Snappy compression and AES encryption.  
   - Server MOTD (server list ping) construction and connection listener utilities.  
 
-- [`bedrock::auth`](crates/libs/auth)  
+- [`bedrock::auth`](crates/auth)  
   - Validation of Xbox Live login identity chains (JWTs) against Microsoft’s OIDC discovery service.  
   - Support for online, offline, and guest authentication types.  
   - Optional async API, enabled via the `auth-async` feature.  
 
-- [`bedrock::form`](crates/libs/form)  
+- [`bedrock::form`](crates/form)  
   - Implementation of the JSON form format used by Minecraft Bedrock Edition.  
 
-- [`bedrock::level`](crates/libs/level)  
+- [`bedrock::level`](crates/level)  
   - Data structures for managing Minecraft Bedrock levels.  
   - Implementation of Bedrock's level format on top of a pure-Rust LevelDB implementation
     (`rusty-leveldb`) that understands Bedrock's on-disk block compression ids, so no native

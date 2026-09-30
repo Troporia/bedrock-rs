@@ -4,14 +4,14 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-bedrock_auth = { path = "../libs/auth", optional = true }
-bedrock_shared = { path = "../libs/shared" }
-bedrock_macros = { path = "../libs/macros", optional = true }
-bedrock_form = { path = "../libs/form", optional = true }
-bedrock_protocol = { path = "../libs/protocol", optional = true }
-bedrock_protocol_core = { path = "../libs/protocol_core", optional = true }
-bedrock_network = { path = "../libs/network", optional = true }
-bedrock_level = { path = "../libs/level", optional = true }
+bedrock_auth = { path = "../crates/auth", optional = true }
+bedrock_shared = { path = "../crates/shared" }
+bedrock_macros = { path = "../crates/macros", optional = true }
+bedrock_form = { path = "../crates/form", optional = true }
+bedrock_protocol = { path = "../crates/protocol", optional = true }
+bedrock_protocol_core = { path = "../crates/protocol_core", optional = true }
+bedrock_network = { path = "../crates/network", optional = true }
+bedrock_level = { path = "../crates/level", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
