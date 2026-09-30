@@ -29,7 +29,7 @@ compiling against the RakNet API, run `cargo update -p raknet-tokio`. `bedrock_l
 | Path | What |
 | --- | --- |
 | `crates/bedrock/src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
-| `crates/libs/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `addon`, `form`, `level`, `shared`. `README.md` says what each does. |
+| `crates/libs/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `form`, `level`, `shared`. `README.md` says what each does. |
 | `xtask/` | The protocol code generator. `cargo xtask` is the whole interface. |
 | `crates/bedrock/examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
 

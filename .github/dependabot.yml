@@ -17,12 +17,6 @@ updates:
 # (Fix issue #57)
 
   - package-ecosystem: "cargo"
-    directory: "/crates/addon" # Location of internal crate "addon"
-    target-branch: "main"
-    schedule:
-      interval: "daily"
-
-  - package-ecosystem: "cargo"
     directory: "/crates/core" # Location of internal crate "core"
     target-branch: "main"
     schedule:

@@ -7,7 +7,6 @@ edition.workspace = true
 bedrock_auth = { path = "../libs/auth", optional = true }
 bedrock_shared = { path = "../libs/shared" }
 bedrock_macros = { path = "../libs/macros", optional = true }
-bedrock_addon = { path = "../libs/addon", optional = true }
 bedrock_form = { path = "../libs/form", optional = true }
 bedrock_protocol = { path = "../libs/protocol", optional = true }
 bedrock_protocol_core = { path = "../libs/protocol_core", optional = true }
@@ -22,7 +21,6 @@ tracing-subscriber = { workspace = true }
 
 [features]
 auth = ["dep:bedrock_auth"]
-addon = ["dep:bedrock_addon"]
 protocol = [
     "dep:bedrock_protocol",
     "dep:bedrock_protocol_core",
@@ -30,7 +28,7 @@ protocol = [
 ]
 network = ["dep:bedrock_network", "protocol"]
 level = ["dep:bedrock_level"]
-full = ["addon", "level", "network", "protocol", "auth"]
+full = ["level", "network", "protocol", "auth"]
 form = ["dep:bedrock_form"]
 
 auth-async = ["bedrock_auth/async"]

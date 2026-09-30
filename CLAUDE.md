@@ -73,8 +73,8 @@ mod tests {
 }
 ```
 
-The same shape serves JSON (`facet_json::from_str` then `to_string` in `form`, `serde_json` in
-`addon`) and LevelDB values (`from_disk` then `to_disk` in `level`).
+The same shape serves JSON (`facet_json::from_str` then `to_string` in `form`) and LevelDB
+values (`from_disk` then `to_disk` in `level`).
 
 ## Per crate
 
@@ -101,12 +101,6 @@ with `Some` it checks the JWT against Microsoft's JWKS. `AuthOIDC::fetch` is the
 call. Tests use a token signed by a key you generate in the test and an `AuthOIDC` built by hand
 around that key; fetching stays out of tests. The `async` feature duplicates `fetch`; a change
 to one is a change to both.
-
-**`addon`**: serde types for `manifest.json`, blocks, items, languages, and `import`/`export`
-over a directory. Oracle: files from a vanilla or marketplace pack. Test parsing on an inline
-JSON string first; test `import` and `export` against a directory you write under
-`tempfile::tempdir()`. JSON here may carry comments (`json_comments`), so a capture with comments
-is a valid test input.
 
 **`form`**: the JSON forms the client renders, via `facet_json`. Oracle: the JSON the client
 sends back or accepts. Tests in `forms/mod.rs` compare a parsed literal against a hand-built

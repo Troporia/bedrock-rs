@@ -42,11 +42,6 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
   - Support for online, offline, and guest authentication types.  
   - Optional async API, enabled via the `auth-async` feature.  
 
-- [`bedrock::addon`](crates/libs/addon)  
-  - Datatypes for defining Minecraft Addon structures.  
-  - Serialization and deserialization support for Addons.  
-  - A programmatic approach to creating Addons easily.  
-
 - [`bedrock::form`](crates/libs/form)  
   - Implementation of the JSON form format used by Minecraft Bedrock Edition.  
 
