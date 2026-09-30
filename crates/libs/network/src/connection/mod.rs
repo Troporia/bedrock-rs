@@ -86,15 +86,7 @@ impl<V: Packets> Connection<V> {
         Ok(stream)
     }
 
-    /// Receives one batch, decrypted and decompressed, with the packets inside left
-    /// exactly as the sender wrote them.
-    ///
-    /// The pair with [`Self::send_batch`] exists for relays - a hop that moves packets
-    /// between two connections without acting on them. Compression and encryption are
-    /// per-connection and have to be redone either way; decoding is not, and a relay
-    /// that decodes pays for it twice over. It costs an allocation and a codec pass per
-    /// packet, and it makes every gap in this crate's packet definitions a broken
-    /// session rather than a packet nobody looked at.
+    /// Receives one decrypted and decompressed batch without decoding its packets.
     pub async fn recv_batch(&mut self) -> Result<Vec<u8>, ConnectionError> {
         let stream = self.transport_layer.recv().await?;
         let stream = decrypt_packets(stream, self.encryption.as_mut())?;
@@ -103,8 +95,7 @@ impl<V: Packets> Connection<V> {
         Ok(stream)
     }
 
-    /// Sends an already-batched packet stream, compressed and encrypted for *this*
-    /// connection. The counterpart to [`Self::recv_batch`].
+    /// Compresses, encrypts and sends an already encoded batch.
     pub async fn send_batch(&mut self, batch: Vec<u8>) -> Result<(), ConnectionError> {
         let stream = compress_packets(batch, self.compression.as_ref())?;
         let stream = encrypt_packets(stream, self.encryption.as_mut())?;
@@ -120,14 +111,5 @@ impl<V: Packets> Connection<V> {
 
     pub async fn is_closed(&self) -> bool {
         self.transport_layer.is_closed().await
-    }
-
-    /// This connection's RakNet protocol state, or `None` when it is not RakNet-
-    /// transported. With `self.encryption`, this is everything a cross-process session
-    /// handoff has to carry.
-    pub async fn raknet_snapshot(&self) -> Option<raknet_tokio::prelude::RakSessionSnapshot> {
-        match &self.transport_layer {
-            TransportLayerConnection::RakNet(session) => session.snapshot().await.ok(),
-        }
     }
 }

@@ -14,12 +14,8 @@ pub struct Encryption {
     key: [u8; 32],
 }
 
-/// [`Encryption`] in a serializable form, so a session can be resumed in another
-/// process.
-///
-/// The ciphers are not serialized: an AES-CTR keystream is a pure function of key, IV
-/// and byte position, and the IV is derived from the key (see [`Encryption::new`]), so
-/// the key plus each direction's keystream position rebuilds an equivalent cipher.
+/// Serializable [`Encryption`] state, from which the ciphers are rebuilt using the key
+/// and each direction's keystream position.
 #[derive(Clone, Debug, facet::Facet)]
 pub struct EncryptionSnapshot {
     key: [u8; 32],
@@ -62,7 +58,6 @@ impl Encryption {
         }
     }
 
-    /// Captures this session's encryption state - see [`EncryptionSnapshot`].
     pub fn snapshot(&self) -> EncryptionSnapshot {
         EncryptionSnapshot {
             key: self.key,
@@ -73,8 +68,6 @@ impl Encryption {
         }
     }
 
-    /// Rebuilds an `Encryption` at the exact keystream position [`Encryption::snapshot`]
-    /// was taken at, so the next `encrypt`/`decrypt` continues the original session.
     pub fn restore(state: EncryptionSnapshot) -> Self {
         let iv = iv_from_key(&state.key);
 
@@ -145,17 +138,10 @@ mod tests {
     use super::*;
     use p384::SecretKey;
 
-    /// Two keypairs deriving the same shared secret, as a login handshake would.
-    /// Fixed scalars rather than an RNG: this tests the AES-CTR handoff, not keygen.
     fn matched_pair() -> (Encryption, Encryption) {
         let token = [7u8; 16];
-        let mut a_bytes = [0x11u8; 48];
-        a_bytes[0] = 0x01; // avoid an all-identical-byte scalar landing on a degenerate point
-        let mut b_bytes = [0x22u8; 48];
-        b_bytes[0] = 0x02;
-
-        let a_secret = SecretKey::from_slice(&a_bytes).expect("valid P-384 scalar");
-        let b_secret = SecretKey::from_slice(&b_bytes).expect("valid P-384 scalar");
+        let a_secret = SecretKey::from_slice(&[0x11u8; 48]).unwrap();
+        let b_secret = SecretKey::from_slice(&[0x22u8; 48]).unwrap();
 
         let a = Encryption::new(&a_secret, &b_secret.public_key(), &token);
         let b = Encryption::new(&b_secret, &a_secret.public_key(), &token);
@@ -163,27 +149,23 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_snapshot_resumes_the_same_keystream_position() {
+    fn restored_snapshot_continues_keystream() {
         let (mut a, mut b) = matched_pair();
 
-        // Move both sides past their initial keystream position.
         for i in 0..3 {
             let msg = format!("packet {i}").into_bytes();
             let ct = a.encrypt(msg.clone()).unwrap();
             assert_eq!(b.decrypt(ct).unwrap(), msg);
         }
 
-        let json = facet_json::to_string(&a.snapshot()).expect("snapshot must serialize");
-        let mut a_resumed =
-            Encryption::restore(facet_json::from_str(&json).expect("snapshot must deserialize"));
+        let json = facet_json::to_string(&a.snapshot()).unwrap();
+        let mut a_resumed = Encryption::restore(facet_json::from_str(&json).unwrap());
 
-        // `b` was never told anything changed, so it must still decrypt what the
-        // resumed instance encrypts, and vice versa.
-        let msg = b"still the same session".to_vec();
+        let msg = b"after restore".to_vec();
         let ct = a_resumed.encrypt(msg.clone()).unwrap();
         assert_eq!(b.decrypt(ct).unwrap(), msg);
 
-        let msg = b"reply after the handoff".to_vec();
+        let msg = b"reply".to_vec();
         let ct = b.encrypt(msg.clone()).unwrap();
         assert_eq!(a_resumed.decrypt(ct).unwrap(), msg);
     }
