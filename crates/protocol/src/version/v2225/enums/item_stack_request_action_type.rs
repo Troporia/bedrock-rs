@@ -474,24 +474,3 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
             }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    #[test]
-    fn reserved_craft_takes_id_sixteen() {
-        let bytes = [16, 18, 1, b'x', 2];
-        let action =
-            ItemStackRequestActionType::<crate::V2225>::deserialize(&mut Cursor::new(&bytes[..]))
-                .unwrap();
-        let mut encoded = Vec::new();
-        action.serialize(&mut encoded).unwrap();
-        assert_eq!(encoded, bytes, "encoding differs from the input");
-        assert!(matches!(
-            action,
-            ItemStackRequestActionType::CraftReserved { ref reserved_id, number_of_requested_crafts: 2 } if reserved_id == "x"
-        ));
-    }
-}

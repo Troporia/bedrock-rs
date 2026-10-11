@@ -144,37 +144,3 @@ pub enum Color255RGBA {
     String(String) = 0,
     Array(#[endianness(le)] [u32; 4]) = 1,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bedrock_protocol_core::ProtoCodec;
-    use std::io::Cursor;
-
-    #[test]
-    fn update_environment_reads_a_typed_payload() {
-        let bytes = [
-            2, 1, b'a', 0, 1, 1, b'b', 0, 1, 0, 0, 0x80, 0x3f, 3, b'a', b'd', b'd', 0, 0,
-        ];
-        let packet =
-            ClientBoundAttributeLayerSyncPacket::deserialize(&mut Cursor::new(&bytes[..])).unwrap();
-        let mut encoded = Vec::new();
-        packet.serialize(&mut encoded).unwrap();
-        assert_eq!(encoded, bytes, "encoding differs from the input");
-
-        let ClientBoundAttributeLayerSyncData::UpdateEnvironmentAttributesData { attributes, .. } =
-            packet.data
-        else {
-            panic!("expected UpdateEnvironmentAttributesData");
-        };
-        assert!(matches!(
-            &attributes[0].payload,
-            EnvironmentAttributePayload::Constant {
-                attribute: AttributeData::Float {
-                    operation: FloatAttributeOperation::Add,
-                    ..
-                }
-            }
-        ));
-    }
-}

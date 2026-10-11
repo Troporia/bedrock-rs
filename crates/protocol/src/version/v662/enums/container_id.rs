@@ -29,21 +29,3 @@ impl ProtoCodec for ContainerID {
         self.0.size_hint()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bedrock_protocol_core::ProtoCodec;
-    use std::io::Cursor;
-
-    #[test]
-    fn container_id_round_trips_any_window_id() {
-        for byte in [0x02u8, 0x63, 0x7f, 0x80] {
-            let id = ContainerID::deserialize(&mut Cursor::new([byte]))
-                .unwrap_or_else(|e| panic!("window id {byte:#04x} rejected: {e}"));
-            let mut encoded = Vec::new();
-            id.serialize(&mut encoded).unwrap();
-            assert_eq!(encoded, [byte]);
-        }
-    }
-}

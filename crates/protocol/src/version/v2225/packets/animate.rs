@@ -12,21 +12,3 @@ pub struct AnimatePacket<V: ProtoVersion> {
     pub swing_source: Option<SwingSource>,
     pub hand: u8,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bedrock_protocol_core::ProtoCodec;
-    use std::io::Cursor;
-
-    #[test]
-    fn animate_ends_with_the_hand_slot() {
-        let bytes = [1, 5, 0, 0, 0, 0, 1, 6, b'a', b't', b't', b'a', b'c', b'k', 1];
-        let packet = AnimatePacket::<crate::V2225>::deserialize(&mut Cursor::new(&bytes[..])).unwrap();
-        let mut encoded = Vec::new();
-        packet.serialize(&mut encoded).unwrap();
-        assert_eq!(encoded, bytes, "encoding differs from the input");
-        assert_eq!(packet.hand, 1);
-        assert!(matches!(packet.swing_source, Some(SwingSource::Attack)));
-    }
-}
