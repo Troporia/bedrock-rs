@@ -19,7 +19,8 @@ pub struct DebugShape<V: ProtoVersion> {
     pub color: Option<V::Color>,
     #[endianness(var)]
     pub dimension: Option<i32>,
-    pub attached_to_entity_id: Option<V::ActorUniqueID>,
+    #[endianness(var)]
+    pub attached_to_entity_id: Option<u64>,
     pub shape_data: DebugShapeData,
 }
 
