@@ -11,7 +11,7 @@ pub struct IdentityStore {
 
 impl IdentityStore {
     pub fn generate() -> Result<Self, IdentityError> {
-        let pem = ServerIdentity::generate("", SystemTime::now())?.to_pem()?;
+        let pem = ServerIdentity::generate("self", SystemTime::now())?.to_pem()?;
         Ok(Self::new(pem))
     }
 
@@ -47,7 +47,7 @@ impl IdentityStore {
     }
 
     pub fn identity(&self) -> Result<ServerIdentity, IdentityError> {
-        ServerIdentity::from_pem(&self.pem, "", SystemTime::now())
+        ServerIdentity::from_pem(&self.pem, "self", SystemTime::now())
     }
 
     pub fn renew(&mut self, every: Duration) -> Option<Result<ServerIdentity, IdentityError>> {
@@ -114,6 +114,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nethernet.pem");
         (dir, path)
+    }
+
+    #[test]
+    fn the_identity_names_the_default_domain() {
+        let identity = IdentityStore::generate().unwrap().identity().unwrap();
+        assert_eq!(identity.domain(), "self");
     }
 
     #[test]

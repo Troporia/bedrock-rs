@@ -31,7 +31,7 @@ impl NetherNetConnection {
     pub async fn connect_http(server: SocketAddr) -> Result<Self, TransportLayerError> {
         let signaling = HttpSignaling::new(rand::random::<u64>().to_string())?;
         let identity =
-            ServerIdentity::generate("", SystemTime::now()).map_err(NetherError::from)?;
+            ServerIdentity::generate("self", SystemTime::now()).map_err(NetherError::from)?;
         let config = ConnectionConfig {
             identity: Some(Arc::new(identity)),
             ..Default::default()
