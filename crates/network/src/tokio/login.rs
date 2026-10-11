@@ -1,7 +1,8 @@
 use super::connection::Connection;
-use super::error::SessionError;
+use super::error::{ConnectionError, SessionError};
 use super::session::Session;
 use super::transport::Transport;
+use crate::codec::{decode_packet, split_batch};
 use crate::login::LoginAction;
 use crate::login::client::{ClientIdentity, ClientLogin};
 use crate::login::packets::LoginPackets;
@@ -67,8 +68,9 @@ where
         if let Some(done) = done.take() {
             return Ok((done, pending));
         }
-        let batch = connection.recv().await?;
-        for packet in batch {
+        let batch = connection.recv_batch().await?;
+        for frame in split_batch(&batch).map_err(ConnectionError::from)? {
+            let packet = decode_packet::<V>(frame).map_err(ConnectionError::from)?;
             if done.is_some() {
                 pending.push(packet);
                 continue;
@@ -304,6 +306,23 @@ mod tests {
         assert!(matches!(
             event,
             LoginEvent::PlayStatus(LoginStatus::LoginFailedClientOld)
+        ));
+    }
+
+    #[::tokio::test]
+    async fn accept_rejects_the_first_unexpected_packet_before_decoding_the_rest() {
+        let (server, mut client) = memory_connections();
+        let options = zlib_config(false);
+        let mut batch =
+            encode_packets::<V2225>(&[V2225::play_status(LoginStatus::LoginSuccess)], None, None)
+                .unwrap();
+        batch.extend([1, 0xff]);
+        let client_side = client.send_batch(batch);
+        let (result, sent) = ::tokio::join!(server.accept(&options), client_side);
+        sent.unwrap();
+        assert!(matches!(
+            result,
+            Err(SessionError::Login(LoginError::UnexpectedPacket { .. }))
         ));
     }
 }

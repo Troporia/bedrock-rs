@@ -4,6 +4,8 @@ use crate::error::NetworkCodecError;
 use bedrock_protocol_core::{PacketHeader, Packets, ProtoCodecVAR};
 use std::io::Cursor;
 
+pub const MAX_BATCH_PACKETS: usize = 4096;
+
 pub fn encode_packets<T: Packets>(
     packets: &[T],
     compression: Option<&Compression>,
@@ -55,21 +57,23 @@ fn batch_packets<T: Packets>(packets: &[T]) -> Result<Vec<u8>, NetworkCodecError
 fn separate_packets<T: Packets>(packets_stream: Vec<u8>) -> Result<Vec<T>, NetworkCodecError> {
     split_batch(&packets_stream)?
         .into_iter()
-        .map(|frame| {
-            let mut frame = Cursor::new(frame);
-            let (packet, header) = T::deserialize(&mut frame)?;
-
-            let unread = frame.get_ref().len() - frame.position() as usize;
-            if unread > 0 {
-                tracing::warn!(
-                    "packet {} deserializer left {unread} unread bytes, skipping to next packet",
-                    header.packet_id,
-                );
-            }
-
-            Ok(packet)
-        })
+        .map(decode_packet)
         .collect()
+}
+
+pub fn decode_packet<T: Packets>(frame: &[u8]) -> Result<T, NetworkCodecError> {
+    let mut frame = Cursor::new(frame);
+    let (packet, header) = T::deserialize(&mut frame)?;
+
+    let unread = frame.get_ref().len() - frame.position() as usize;
+    if unread > 0 {
+        tracing::warn!(
+            "packet {} deserializer left {unread} unread bytes, skipping to next packet",
+            header.packet_id,
+        );
+    }
+
+    Ok(packet)
 }
 
 pub fn split_batch(batch: &[u8]) -> Result<Vec<&[u8]>, NetworkCodecError> {
@@ -81,6 +85,9 @@ pub fn split_batch(batch: &[u8]) -> Result<Vec<&[u8]>, NetworkCodecError> {
         let rest = &batch[stream.position() as usize..];
         if declared == 0 {
             return Err(NetworkCodecError::EmptyPacket);
+        }
+        if frames.len() == MAX_BATCH_PACKETS {
+            return Err(NetworkCodecError::PacketCountExceeded(MAX_BATCH_PACKETS));
         }
         let Some(frame) = rest.get(..declared as usize) else {
             return Err(NetworkCodecError::PacketLengthOutOfBounds {
@@ -192,5 +199,19 @@ mod frame_tests {
     #[test]
     fn empty_batch_has_no_frames() {
         assert!(split_batch(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn batch_with_more_frames_than_the_cap_is_an_error() {
+        assert!(matches!(
+            split_batch(&[1, 4].repeat(MAX_BATCH_PACKETS + 1)),
+            Err(NetworkCodecError::PacketCountExceeded(MAX_BATCH_PACKETS))
+        ));
+        assert_eq!(
+            split_batch(&[1, 4].repeat(MAX_BATCH_PACKETS))
+                .unwrap()
+                .len(),
+            MAX_BATCH_PACKETS
+        );
     }
 }

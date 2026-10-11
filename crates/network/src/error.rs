@@ -21,6 +21,8 @@ pub enum NetworkCodecError {
     InvalidGamePacketHeader(u8),
     #[error("Packet length {declared} exceeds the {remaining} bytes left in the batch")]
     PacketLengthOutOfBounds { declared: u32, remaining: usize },
+    #[error("Batch packet count exceeds the {0} packet limit")]
+    PacketCountExceeded(usize),
 }
 
 #[derive(Error, Debug)]
