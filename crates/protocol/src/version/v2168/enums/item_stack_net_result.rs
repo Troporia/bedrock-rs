@@ -72,4 +72,6 @@ pub enum ItemStackNetResult {
     CannotRemoveItem = 65,
     CannotConsumeItem = 66,
     ScreenStackError = 67,
+    #[enum_fallback]
+    Unknown(i8),
 }

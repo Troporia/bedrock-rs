@@ -67,4 +67,6 @@ pub enum ContainerEnumName {
     CreatedOutputContainer = 60,
     SmithingTableTemplateContainer = 61,
     CrafterLevelEntityContainer = 62,
+    #[enum_fallback]
+    Unknown(i8),
 }

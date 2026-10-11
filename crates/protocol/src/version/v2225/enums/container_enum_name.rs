@@ -75,4 +75,6 @@ pub enum ContainerEnumName {
     ReservedB = 68,
     ReservedC = 69,
     ReservedD = 70,
+    #[enum_fallback]
+    Unknown(i8),
 }

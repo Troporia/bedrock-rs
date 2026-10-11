@@ -12,4 +12,6 @@ pub enum InventorySourceType {
     CreativeInventory = 3,
     UntrackedInteractionUI(#[endianness(var)] i32) = 100,
     NonImplementedFeatureTODO(#[endianness(var)] i32) = 99999,
+    #[enum_fallback]
+    Unknown(u32),
 }

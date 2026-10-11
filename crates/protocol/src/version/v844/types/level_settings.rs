@@ -77,6 +77,8 @@ pub enum GameRuleLegacyType {
     Bool(bool) = 1,
     Int(#[endianness(var)] i32) = 2,
     Float(#[endianness(le)] f32) = 3,
+    #[enum_fallback]
+    Unknown(u32),
 }
 
 #[derive(ProtoCodec, Clone, Debug)]
