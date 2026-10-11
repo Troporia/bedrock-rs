@@ -96,7 +96,7 @@ macro_rules! impl_proto_codec_var {
                         return Ok(decoded);
                     }
                 }
-                Err(ProtoCodecError::VarintTooLong(MAX_BYTES))
+                Err(ProtoCodecError::VarintLengthExceeded(MAX_BYTES))
             }
 
             fn size_hint(&self) -> usize {
@@ -162,7 +162,7 @@ mod tests {
     fn u32_varint_longer_than_five_bytes_is_rejected() {
         let result = decode_var::<u32>(&[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01]);
         assert!(
-            matches!(result, Err(ProtoCodecError::VarintTooLong(5))),
+            matches!(result, Err(ProtoCodecError::VarintLengthExceeded(5))),
             "got {result:?}"
         );
     }
@@ -171,7 +171,7 @@ mod tests {
     fn u64_varint_longer_than_ten_bytes_is_rejected() {
         let result = decode_var::<u64>(&[0xff; 11]);
         assert!(
-            matches!(result, Err(ProtoCodecError::VarintTooLong(10))),
+            matches!(result, Err(ProtoCodecError::VarintLengthExceeded(10))),
             "got {result:?}"
         );
     }

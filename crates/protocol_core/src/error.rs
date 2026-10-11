@@ -32,8 +32,8 @@ pub enum ProtoCodecError {
     StrumParseError(#[from] ParseError),
     #[error("Expected Some in: {0}")]
     ExpectedSome(&'static str),
-    #[error("varint did not terminate within {0} bytes")]
-    VarintTooLong(usize),
+    #[error("varint length exceeds the {0} byte limit")]
+    VarintLengthExceeded(usize),
 }
 
 impl From<Infallible> for ProtoCodecError {

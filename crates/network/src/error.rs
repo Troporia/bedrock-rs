@@ -47,8 +47,8 @@ pub enum CompressionError {
     UnknownNetworkAlgorithm(u16),
     #[error("Batch method {found} does not match negotiated method {negotiated}")]
     UnexpectedMethod { negotiated: u8, found: u8 },
-    #[error("Decompressed batch exceeds {0} bytes")]
-    TooLarge(usize),
+    #[error("Decompressed batch size exceeds the {0} byte limit")]
+    DecompressedSizeExceeded(usize),
     #[error("IO Error: {0}")]
     IOError(#[from] IOError),
 }

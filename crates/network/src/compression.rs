@@ -160,7 +160,7 @@ impl Compression {
         let len = snap::raw::decompress_len(src)
             .map_err(|err| CompressionError::SnappyError(err.into()))?;
         if len > max_len {
-            return Err(CompressionError::TooLarge(max_len));
+            return Err(CompressionError::DecompressedSizeExceeded(max_len));
         }
         snap::raw::Decoder::new()
             .decompress_vec(src)
@@ -177,7 +177,7 @@ impl Compression {
             .take((max_len as u64).saturating_add(1))
             .read_to_end(&mut dst)?;
         if dst.len() > max_len {
-            return Err(CompressionError::TooLarge(max_len));
+            return Err(CompressionError::DecompressedSizeExceeded(max_len));
         }
         Ok(dst)
     }
@@ -218,7 +218,10 @@ mod tests {
         let bomb = zlib().compress(vec![0u8; MAX_LEN + 1]).unwrap();
         let result = zlib().decompress(bomb, MAX_LEN);
         assert!(
-            matches!(result, Err(CompressionError::TooLarge(MAX_LEN))),
+            matches!(
+                result,
+                Err(CompressionError::DecompressedSizeExceeded(MAX_LEN))
+            ),
             "got {:?}",
             result.map(|v| v.len())
         );
@@ -265,7 +268,10 @@ mod tests {
         let bomb = snappy.compress(vec![0u8; MAX_LEN + 1]).unwrap();
         let result = snappy.decompress(bomb, MAX_LEN);
         assert!(
-            matches!(result, Err(CompressionError::TooLarge(MAX_LEN))),
+            matches!(
+                result,
+                Err(CompressionError::DecompressedSizeExceeded(MAX_LEN))
+            ),
             "got {:?}",
             result.map(|v| v.len())
         );

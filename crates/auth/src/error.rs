@@ -20,8 +20,8 @@ pub enum AuthError {
     LengthOutOfBounds { declared: u32, remaining: usize },
     #[error("{0} unread bytes after the connection request")]
     TrailingBytes(usize),
-    #[error("field of {0} bytes does not fit a u32 length prefix")]
-    FieldTooLong(usize),
+    #[error("field of {0} bytes exceeds the u32 length prefix limit")]
+    FieldLengthExceeded(usize),
     #[error("no JWKS key with kid {0}")]
     UnknownKeyId(String),
     #[error("certificate chain has {0} tokens, expected 1 or 3")]

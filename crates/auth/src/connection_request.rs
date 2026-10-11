@@ -176,7 +176,8 @@ fn take_length_prefixed<'a>(input: &mut &'a [u8]) -> Result<&'a [u8], AuthError>
 }
 
 fn put_length_prefixed(bytes: &mut Vec<u8>, field: &[u8]) -> Result<(), AuthError> {
-    let length = u32::try_from(field.len()).map_err(|_| AuthError::FieldTooLong(field.len()))?;
+    let length =
+        u32::try_from(field.len()).map_err(|_| AuthError::FieldLengthExceeded(field.len()))?;
     bytes.extend_from_slice(&length.to_le_bytes());
     bytes.extend_from_slice(field);
     Ok(())
