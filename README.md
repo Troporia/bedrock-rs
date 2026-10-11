@@ -31,6 +31,7 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
   - Complete implementation of the Minecraft Bedrock protocol.  
   - Support for both server-side and client-side operations.  
   - Multi-protocol compatibility: one feature per protocol version (`protocol-v662` through `protocol-v2225`), each version described as a diff over the previous one and expanded by `cargo xtask`.  
+  - `protocol-v2168hotfix4` (`V2168Hotfix4`) is 1.26.44, which reports protocol 2168 like 1.26.40 but writes SetScore remove entries differently; a server picks it after login by the client's game version (`Connection::into_ver`).  
 
 - [`bedrock::network`](crates/network)  
   - RakNet-based transport layer for accepting, tracking, and communicating with client connections.  

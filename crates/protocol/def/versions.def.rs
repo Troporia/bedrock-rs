@@ -906,7 +906,16 @@ versions![
             % StructureRedstoneSaveMode: StructureRedstoneSaveMode,
         ] in crate::version::v2168::enums,
     },
-    (2169, "r/26_u4_hotfix5", "1.26.45"): {},
+    (2168, "r/26_u4_hotfix4", "1.26.44"): {
+        packets: [
+            % SetScorePacket: SetScorePacket^,
+        ] in crate::version::v2168hotfix4::packets,
+    } as V2168Hotfix4,
+    (2169, "r/26_u4_hotfix5", "1.26.45"): {
+        packets: [
+            % SetScorePacket: SetScorePacket^,
+        ] in crate::version::v2168::packets,
+    },
     (2193, "r/26_u5", "1.26.50"): {
         packets: [
             + RecordStartedPacket: RecordStartedPacket^,
