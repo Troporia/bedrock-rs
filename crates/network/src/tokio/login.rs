@@ -7,19 +7,35 @@ use crate::login::LoginAction;
 use crate::login::client::{ClientIdentity, ClientLogin};
 use crate::login::packets::LoginPackets;
 use crate::login::server::{LoginFailure, ServerLogin, ServerLoginOptions};
-use bedrock_auth::Login;
+use bedrock_auth::{AsyncHttpClient, HttpError, Login};
 
 impl<V: LoginPackets, T: Transport> Connection<V, T> {
     pub async fn accept(
         self,
         options: &ServerLoginOptions,
     ) -> Result<Session<V, Box<Login>, T>, SessionError> {
+        self.accept_refreshing(options, None::<&NoKeyRefresh>).await
+    }
+
+    pub async fn accept_with_refresh(
+        self,
+        options: &ServerLoginOptions,
+        client: &impl AsyncHttpClient,
+    ) -> Result<Session<V, Box<Login>, T>, SessionError> {
+        self.accept_refreshing(options, Some(client)).await
+    }
+
+    async fn accept_refreshing(
+        self,
+        options: &ServerLoginOptions,
+        client: Option<&impl AsyncHttpClient>,
+    ) -> Result<Session<V, Box<Login>, T>, SessionError> {
         let mut machine = ServerLogin::new(options.clone());
         if let Some(key) = self.get_transport_conn().login_key() {
             machine.bind_transport_key(key);
         }
-        let (connection, login, pending) =
-            drive(self, Vec::new(), |packet| machine.handle(packet)).await?;
+        let mut step = ServerStep { machine, client };
+        let (connection, login, pending) = drive(self, Vec::new(), &mut step).await?;
         Ok(Session::new(connection, login, pending))
     }
 
@@ -29,22 +45,66 @@ impl<V: LoginPackets, T: Transport> Connection<V, T> {
     ) -> Result<Session<V, (), T>, SessionError> {
         let mut machine = ClientLogin::new(identity);
         let start = machine.start();
-        let (connection, (), pending) =
-            drive(self, start, |packet| Ok(machine.handle(packet)?)).await?;
+        let (connection, (), pending) = drive(self, start, &mut machine).await?;
         Ok(Session::new(connection, (), pending))
+    }
+}
+
+trait LoginStep<V, Done> {
+    async fn handle(&mut self, packet: V) -> Result<Vec<LoginAction<V, Done>>, LoginFailure<V>>;
+}
+
+impl<V: LoginPackets> LoginStep<V, ()> for ClientLogin {
+    async fn handle(&mut self, packet: V) -> Result<Vec<LoginAction<V>>, LoginFailure<V>> {
+        Ok(ClientLogin::handle(self, packet)?)
+    }
+}
+
+struct ServerStep<'a, C> {
+    machine: ServerLogin,
+    client: Option<&'a C>,
+}
+
+impl<V: LoginPackets, C: AsyncHttpClient> LoginStep<V, Box<Login>> for ServerStep<'_, C> {
+    async fn handle(
+        &mut self,
+        packet: V,
+    ) -> Result<Vec<LoginAction<V, Box<Login>>>, LoginFailure<V>> {
+        let failure = match self.machine.handle(packet) {
+            Err(failure) => failure,
+            done => return done,
+        };
+        let Some(client) = self.client else {
+            return Err(failure);
+        };
+        let Some(oidc) = self.machine.claim_key_refresh() else {
+            return Err(failure);
+        };
+        if let Err(error) = oidc.refresh_async(client).await {
+            tracing::warn!(%error, "refreshing the login keys failed");
+        }
+        self.machine.retry_login()
+    }
+}
+
+struct NoKeyRefresh;
+
+impl AsyncHttpClient for NoKeyRefresh {
+    async fn get(&self, _url: &str) -> Result<Vec<u8>, HttpError> {
+        Err("no http client".into())
     }
 }
 
 async fn drive<V, T, Done>(
     mut connection: Connection<V, T>,
     start: Vec<LoginAction<V, Done>>,
-    handle: impl FnMut(V) -> Result<Vec<LoginAction<V, Done>>, LoginFailure<V>>,
+    step: &mut impl LoginStep<V, Done>,
 ) -> Result<(Connection<V, T>, Done, Vec<V>), SessionError>
 where
     V: LoginPackets,
     T: Transport,
 {
-    match run(&mut connection, start, handle).await {
+    match run(&mut connection, start, step).await {
         Ok((done, pending)) => Ok((connection, done, pending)),
         Err(error) => {
             connection.close().await;
@@ -56,7 +116,7 @@ where
 async fn run<V, T, Done>(
     connection: &mut Connection<V, T>,
     start: Vec<LoginAction<V, Done>>,
-    mut handle: impl FnMut(V) -> Result<Vec<LoginAction<V, Done>>, LoginFailure<V>>,
+    step: &mut impl LoginStep<V, Done>,
 ) -> Result<(Done, Vec<V>), SessionError>
 where
     V: LoginPackets,
@@ -79,7 +139,7 @@ where
                 pending.push(packet);
                 continue;
             }
-            match handle(packet) {
+            match step.handle(packet).await {
                 Ok(actions) => apply_all(connection, actions, &mut done).await?,
                 Err(failure) => {
                     if !failure.farewell.is_empty() {
@@ -119,7 +179,8 @@ mod tests {
     use crate::login::handshake::client_finish_encryption;
     use crate::login::packets::{LoginEvent, LoginStatus};
     use crate::test_helpers::{
-        client_key, identity_key, self_signed_login, self_signed_request_bytes,
+        RotatedKeysHttp, client_key, identity_key, oidc_before_rotation, self_signed_login,
+        self_signed_request_bytes, verified_online_login,
     };
     use crate::tokio::memory::{MemoryConnection, memory_connections, memory_connections_bound_to};
     use bedrock_protocol::V2225;
@@ -180,6 +241,81 @@ mod tests {
             .unwrap();
         let up = server.connection_mut().recv().await.unwrap();
         assert!(up.into_iter().all(is_player_spawn));
+    }
+
+    fn rotated_keys_options() -> ServerLoginOptions {
+        zlib_config(false)
+            .require_authentication(true)
+            .oidc(oidc_before_rotation())
+    }
+
+    async fn send_online_login(client: &mut MemoryConnection) {
+        client
+            .send(&[V2225::request_network_settings(V2225::PROTOCOL_VERSION)])
+            .await
+            .unwrap();
+        client.recv().await.unwrap();
+        client.enable_compression(Compression::Zlib {
+            threshold: 1,
+            compression_level: 6,
+        });
+        client.send(&[verified_online_login()]).await.unwrap();
+    }
+
+    #[::tokio::test]
+    async fn a_login_signed_by_a_rotated_key_is_accepted_after_refreshing_the_keys() {
+        let (server_conn, mut client_conn) = memory_connections();
+        let options = rotated_keys_options();
+        let http = RotatedKeysHttp::publishing("current");
+
+        let (server, ()) = ::tokio::join!(
+            server_conn.accept_with_refresh(&options, &http),
+            send_online_login(&mut client_conn)
+        );
+
+        let server = server.unwrap();
+        assert!(server.identity().authentication.is_authenticated());
+        assert_eq!(http.requests(), ["https://jwks.invalid"]);
+    }
+
+    #[::tokio::test]
+    async fn a_login_signed_by_a_rotated_key_is_refused_without_a_client() {
+        let (server_conn, mut client_conn) = memory_connections();
+        let options = rotated_keys_options();
+
+        let (server, ()) = ::tokio::join!(
+            server_conn.accept(&options),
+            send_online_login(&mut client_conn)
+        );
+
+        assert!(matches!(
+            server.map(|_| ()),
+            Err(SessionError::Login(LoginError::Auth(
+                bedrock_auth::AuthError::UnknownKeyId(_)
+            )))
+        ));
+    }
+
+    #[::tokio::test]
+    async fn a_login_signed_by_an_unpublished_key_is_refused_after_one_refresh() {
+        let (server_conn, mut client_conn) = memory_connections();
+        let options = zlib_config(false)
+            .require_authentication(true)
+            .oidc(oidc_before_rotation());
+        let http = RotatedKeysHttp::publishing("previous");
+
+        let (server, ()) = ::tokio::join!(
+            server_conn.accept_with_refresh(&options, &http),
+            send_online_login(&mut client_conn)
+        );
+
+        assert!(matches!(
+            server.map(|_| ()),
+            Err(SessionError::Login(LoginError::Auth(
+                bedrock_auth::AuthError::UnknownKeyId(_)
+            )))
+        ));
+        assert_eq!(http.requests(), ["https://jwks.invalid"]);
     }
 
     #[::tokio::test]

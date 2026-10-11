@@ -1,7 +1,8 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bedrock_auth::{
-    AuthData, AuthOIDC, AuthPayload, AuthType, ClientData, ConnectionRequest, encode_public_key,
+    AsyncHttpClient, AuthData, AuthOIDC, AuthPayload, AuthType, ClientData, ConnectionRequest,
+    HttpError, encode_public_key,
 };
 use bedrock_protocol::V2225;
 use p384::SecretKey;
@@ -11,8 +12,8 @@ use rsa::RsaPrivateKey;
 use rsa::signature::{SignatureEncoding, Signer};
 use rsa::traits::PublicKeyParts;
 use serde_json::json;
-use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::login::LoginPackets;
 
@@ -41,18 +42,62 @@ fn oidc_key() -> &'static RsaPrivateKey {
     })
 }
 
-pub(crate) fn trusted_oidc() -> AuthOIDC {
+fn jwks_json(kid: &str) -> serde_json::Value {
     let key = oidc_key();
-    let jwks = serde_json::from_value(json!({ "keys": [{
+    json!({ "keys": [{
         "kty": "RSA",
-        "kid": "current",
+        "kid": kid,
         "use": "sig",
         "alg": "RS256",
         "n": URL_SAFE_NO_PAD.encode(key.n().to_be_bytes()),
         "e": URL_SAFE_NO_PAD.encode(key.e().to_be_bytes()),
-    }] }))
-    .expect("JWKS parses");
-    AuthOIDC::new(ISSUER, AuthOIDC::AUDIENCE, "https://jwks.invalid", jwks)
+    }] })
+}
+
+const JWKS_URI: &str = "https://jwks.invalid";
+
+fn oidc_trusting(kid: &str) -> AuthOIDC {
+    let jwks = serde_json::from_value(jwks_json(kid)).expect("JWKS parses");
+    AuthOIDC::new(ISSUER, AuthOIDC::AUDIENCE, JWKS_URI, jwks)
+}
+
+pub(crate) fn trusted_oidc() -> AuthOIDC {
+    oidc_trusting("current")
+}
+
+pub(crate) fn oidc_before_rotation() -> AuthOIDC {
+    let mut oidc = oidc_trusting("previous");
+    oidc.refresh_interval = Duration::ZERO;
+    oidc
+}
+
+pub(crate) struct RotatedKeysHttp {
+    published_kid: &'static str,
+    requests: Mutex<Vec<String>>,
+}
+
+impl RotatedKeysHttp {
+    pub(crate) fn publishing(published_kid: &'static str) -> Self {
+        Self {
+            published_kid,
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(crate) fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+impl AsyncHttpClient for RotatedKeysHttp {
+    async fn get(&self, url: &str) -> Result<Vec<u8>, HttpError> {
+        self.requests.lock().unwrap().push(url.to_owned());
+        if url == JWKS_URI {
+            Ok(jwks_json(self.published_kid).to_string().into_bytes())
+        } else {
+            Err(format!("no response for {url}").into())
+        }
+    }
 }
 
 fn oidc_token(display_name: &str) -> String {
@@ -62,7 +107,7 @@ fn oidc_token(display_name: &str) -> String {
         .as_secs();
     let header = json!({ "alg": "RS256", "kid": "current" });
     let claims = json!({
-        "mid": "playfab", "xid": "", "xname": display_name,
+        "mid": "playfab", "xid": "2535400000000001", "xname": display_name,
         "cpk": encode_public_key(&client_key().public_key()).unwrap(),
         "iss": ISSUER, "aud": AuthOIDC::AUDIENCE,
         "nbf": now - 60, "exp": now + 3600,
@@ -77,10 +122,10 @@ fn oidc_token(display_name: &str) -> String {
     format!("{message}.{signature}")
 }
 
-fn guest_login_with_token(token: String) -> V2225 {
+fn oidc_login_with_token(auth_type: AuthType, token: String) -> V2225 {
     let client_data = ClientData::offline("1.21.0", "127.0.0.1:19132", "Guest");
     let auth = AuthData {
-        auth_type: AuthType::Guest,
+        auth_type,
         auth_payload: AuthPayload::Token(token),
     };
     let request = ConnectionRequest::with_auth(auth, &client_key(), &client_data).unwrap();
@@ -88,7 +133,11 @@ fn guest_login_with_token(token: String) -> V2225 {
 }
 
 pub(crate) fn verified_guest_login() -> V2225 {
-    guest_login_with_token(oidc_token("Guest"))
+    oidc_login_with_token(AuthType::Guest, oidc_token("Guest"))
+}
+
+pub(crate) fn verified_online_login() -> V2225 {
+    oidc_login_with_token(AuthType::Online, oidc_token("Guest"))
 }
 
 pub(crate) fn forged_guest_login() -> V2225 {
@@ -96,7 +145,10 @@ pub(crate) fn forged_guest_login() -> V2225 {
     let altered = oidc_token("Host");
     let parts = genuine.split('.').collect::<Vec<_>>();
     let altered_payload = altered.split('.').nth(1).unwrap();
-    guest_login_with_token(format!("{}.{altered_payload}.{}", parts[0], parts[2]))
+    oidc_login_with_token(
+        AuthType::Guest,
+        format!("{}.{altered_payload}.{}", parts[0], parts[2]),
+    )
 }
 
 pub(crate) fn self_signed_login(display_name: &str) -> V2225 {

@@ -3,10 +3,11 @@ use super::handshake::server_begin_encryption;
 use super::packets::{DisconnectInfo, LoginEvent, LoginPackets, LoginStatus, NetworkSettings};
 use crate::compression::Compression;
 use crate::error::LoginError;
-use bedrock_auth::{AuthOIDC, ChainRoot, Login};
+use bedrock_auth::{AuthError, AuthOIDC, ChainRoot, Login};
 use p384::SecretKey;
 use p384::elliptic_curve::common::Generate;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub type ServerLoginAction<V> = LoginAction<V, Box<Login>>;
 
@@ -102,8 +103,18 @@ impl<V> std::fmt::Debug for LoginFailure<V> {
 
 enum ServerState {
     AwaitSettings,
-    AwaitLogin { protocol: i32 },
-    AwaitHandshake { login: Box<Login> },
+    AwaitLogin {
+        protocol: i32,
+    },
+    AwaitHandshake {
+        login: Box<Login>,
+    },
+    AwaitKeyRefresh {
+        requested: i32,
+        protocol: i32,
+        request: Vec<u8>,
+        kid: String,
+    },
     Done,
 }
 
@@ -113,6 +124,7 @@ impl ServerState {
             Self::AwaitSettings => "awaiting network settings request",
             Self::AwaitLogin { .. } => "awaiting login",
             Self::AwaitHandshake { .. } => "awaiting client handshake",
+            Self::AwaitKeyRefresh { .. } => "awaiting a key refresh",
             Self::Done => "login finished",
         }
     }
@@ -161,7 +173,7 @@ impl ServerLogin {
                     protocol: requested,
                 },
                 LoginEvent::Login { protocol, request },
-            ) => self.accept_request(requested, protocol, &request),
+            ) => self.accept_request(requested, protocol, &request, true),
             (ServerState::AwaitHandshake { login }, LoginEvent::ClientHandshake) => {
                 Ok(finish(login))
             }
@@ -201,11 +213,40 @@ impl ServerLogin {
         ])
     }
 
+    /// The OIDC keys when the last login failed on a key id they lack and a refresh is due.
+    /// Refresh them, then call [`Self::retry_login`] once.
+    pub fn claim_key_refresh(&self) -> Option<&AuthOIDC> {
+        let ServerState::AwaitKeyRefresh { kid, .. } = &self.state else {
+            return None;
+        };
+        let oidc = self.options.oidc.as_deref()?;
+        oidc.claim_refresh(kid, Instant::now()).then_some(oidc)
+    }
+
+    pub fn retry_login<V: LoginPackets>(
+        &mut self,
+    ) -> Result<Vec<ServerLoginAction<V>>, LoginFailure<V>> {
+        match std::mem::replace(&mut self.state, ServerState::Done) {
+            ServerState::AwaitKeyRefresh {
+                requested,
+                protocol,
+                request,
+                ..
+            } => self.accept_request(requested, protocol, &request, false),
+            state => {
+                let name = state.name();
+                self.state = state;
+                Err(LoginError::UnexpectedPacket { state: name }.into())
+            }
+        }
+    }
+
     fn accept_request<V: LoginPackets>(
         &mut self,
         requested: i32,
         protocol: i32,
         request: &[u8],
+        may_await_keys: bool,
     ) -> Result<Vec<ServerLoginAction<V>>, LoginFailure<V>> {
         if protocol != requested {
             return Err(LoginError::ProtocolChanged {
@@ -214,13 +255,26 @@ impl ServerLogin {
             }
             .into());
         }
-        let request = bedrock_auth::ConnectionRequest::parse(request)?;
+        let raw = request;
+        let request = bedrock_auth::ConnectionRequest::parse(raw)?;
         let oidc = self.options.oidc.as_deref();
         let chain_root = &self.options.chain_root;
-        let authentication = if self.options.allow_guests {
-            request.auth.validate_allowing_guests(oidc, chain_root)?
+        let validated = if self.options.allow_guests {
+            request.auth.validate_allowing_guests(oidc, chain_root)
         } else {
-            request.auth.validate(oidc, chain_root)?
+            request.auth.validate(oidc, chain_root)
+        };
+        let authentication = match validated {
+            Err(AuthError::UnknownKeyId(kid)) if may_await_keys => {
+                self.state = ServerState::AwaitKeyRefresh {
+                    requested,
+                    protocol,
+                    request: raw.to_vec(),
+                    kid: kid.clone(),
+                };
+                return Err(AuthError::UnknownKeyId(kid).into());
+            }
+            other => other?,
         };
         let login = request.verify_client_data(authentication)?;
         if let Some(expected) = &self.transport_key
