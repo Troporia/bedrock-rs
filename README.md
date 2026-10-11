@@ -42,7 +42,7 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
 
 - [`bedrock::auth`](crates/auth)  
   - Validation of Xbox Live login identity chains (JWTs) against Microsoft’s OIDC discovery service.  
-  - Online and offline (self-signed) logins; guest logins are rejected.  
+  - Online and offline (self-signed) logins; guest (split-screen) logins are rejected unless the caller opts in (`AuthData::validate_allowing_guests`, `ServerLoginOptions::allow_guests`), and are then verified like online logins.  
   - No I/O of its own: bring any HTTP client, or enable `auth-ureq` (blocking, no tokio) or `auth-reqwest` (async).  
 
 - [`bedrock::form`](crates/form)  

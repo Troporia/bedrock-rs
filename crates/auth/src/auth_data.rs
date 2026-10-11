@@ -192,6 +192,56 @@ impl AuthData {
         }
     }
 
+    /// Like [`Self::validate`], but a guest (split-screen) login whose token verifies against
+    /// the OIDC keys yields [`Authentication::AuthenticatedGuest`] instead of an error.
+    pub fn validate_allowing_guests(
+        &self,
+        oidc: Option<&AuthOIDC>,
+        chain_root: &ChainRoot,
+    ) -> Result<Authentication, AuthError> {
+        if self.auth_type != AuthType::Guest {
+            return self.validate(oidc, chain_root);
+        }
+        match (&self.auth_payload, oidc) {
+            (AuthPayload::Token(token), Some(oidc)) => Ok(Authentication::AuthenticatedGuest(
+                Self::validate_online_token(token, oidc)?.into(),
+            )),
+            _ => Err(AuthError::GuestLogin),
+        }
+    }
+
+    pub fn validate_allowing_guests_refreshing(
+        &self,
+        oidc: Option<&AuthOIDC>,
+        chain_root: &ChainRoot,
+        client: &impl HttpClient,
+    ) -> Result<Authentication, AuthError> {
+        let result = self.validate_allowing_guests(oidc, chain_root);
+        match refresh_target(&result, oidc) {
+            Some(oidc) => {
+                oidc.refresh(client)?;
+                self.validate_allowing_guests(Some(oidc), chain_root)
+            }
+            None => result,
+        }
+    }
+
+    pub async fn validate_allowing_guests_refreshing_async(
+        &self,
+        oidc: Option<&AuthOIDC>,
+        chain_root: &ChainRoot,
+        client: &impl AsyncHttpClient,
+    ) -> Result<Authentication, AuthError> {
+        let result = self.validate_allowing_guests(oidc, chain_root);
+        match refresh_target(&result, oidc) {
+            Some(oidc) => {
+                oidc.refresh_async(client).await?;
+                self.validate_allowing_guests(Some(oidc), chain_root)
+            }
+            None => result,
+        }
+    }
+
     fn validate_token(
         token: &str,
         auth_type: &AuthType,
@@ -461,6 +511,119 @@ mod tests {
         let result = data.validate(None, &ChainRoot::default());
 
         assert!(matches!(result, Err(AuthError::GuestLogin)), "{result:?}");
+    }
+
+    fn guest_token_data(key: &TestRsaKey) -> AuthData {
+        AuthData {
+            auth_type: AuthType::Guest,
+            ..online_token_data(key)
+        }
+    }
+
+    #[test]
+    fn guest_token_signed_by_jwks_key_is_an_authenticated_guest_when_guests_are_allowed() {
+        let key = TestRsaKey::shared();
+        let oidc = oidc_trusting(key.jwks("current"));
+
+        let authentication = guest_token_data(key)
+            .validate_allowing_guests(Some(&oidc), &ChainRoot::default())
+            .unwrap();
+
+        let Authentication::AuthenticatedGuest(identity) = authentication else {
+            panic!("a verified guest token must report an authenticated guest: {authentication:?}");
+        };
+        assert_eq!(identity.xuid, "2535400000000001");
+    }
+
+    #[test]
+    fn guest_token_with_a_forged_signature_is_refused_when_guests_are_allowed() {
+        let key = TestRsaKey::shared();
+        let oidc = oidc_trusting(key.jwks("current"));
+        let genuine = key.sign(&online_claims());
+        let mut claims = online_claims();
+        claims["xname"] = json!("Alex");
+        let altered = key.sign(&claims);
+        let [header, _, signature] = genuine.split('.').collect::<Vec<_>>()[..] else {
+            panic!("a token has three parts");
+        };
+        let altered_payload = altered.split('.').nth(1).unwrap();
+        let data = AuthData {
+            auth_type: AuthType::Guest,
+            auth_payload: AuthPayload::Token(format!("{header}.{altered_payload}.{signature}")),
+        };
+
+        let result = data.validate_allowing_guests(Some(&oidc), &ChainRoot::default());
+
+        assert!(
+            matches!(result, Err(AuthError::Jwt(JwtError::InvalidSignature))),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn guest_token_without_oidc_is_refused_when_guests_are_allowed() {
+        let result = guest_token_data(TestRsaKey::shared())
+            .validate_allowing_guests(None, &ChainRoot::default());
+
+        assert!(matches!(result, Err(AuthError::GuestLogin)), "{result:?}");
+    }
+
+    #[test]
+    fn guest_chain_is_refused_when_guests_are_allowed() {
+        let key = TestKey::from_seed(1);
+        let claims = json!({
+            "identityPublicKey": key.public_base64(),
+            "extraData": { "XUID": "", "displayName": "Steve" },
+        });
+        let data = AuthData {
+            auth_type: AuthType::Guest,
+            auth_payload: AuthPayload::Chain(vec![key.sign(&with_window(claims, valid_window()))]),
+        };
+
+        let result = data.validate_allowing_guests(None, &ChainRoot::default());
+
+        assert!(matches!(result, Err(AuthError::GuestLogin)), "{result:?}");
+    }
+
+    fn rotated_oidc_and_http(key: &TestRsaKey) -> (AuthOIDC, FakeHttp) {
+        let mut oidc = oidc_trusting(key.jwks("previous"));
+        oidc.refresh_interval = Duration::ZERO;
+        let http = FakeHttp::serving(&[(
+            "https://jwks.invalid",
+            serde_json::to_value(key.jwks("current")).unwrap(),
+        )]);
+        (oidc, http)
+    }
+
+    #[test]
+    fn guest_token_with_rotated_kid_refetches_jwks_once_when_guests_are_allowed() {
+        let key = TestRsaKey::shared();
+        let (oidc, http) = rotated_oidc_and_http(key);
+
+        let authentication = guest_token_data(key)
+            .validate_allowing_guests_refreshing(Some(&oidc), &ChainRoot::default(), &http)
+            .unwrap();
+
+        assert!(authentication.is_guest(), "{authentication:?}");
+        assert_eq!(http.requests(), ["https://jwks.invalid"]);
+    }
+
+    #[test]
+    fn guest_token_with_rotated_kid_refetches_jwks_once_when_guests_are_allowed_async() {
+        let key = TestRsaKey::shared();
+        let (oidc, http) = rotated_oidc_and_http(key);
+
+        let authentication = block_on(
+            guest_token_data(key).validate_allowing_guests_refreshing_async(
+                Some(&oidc),
+                &ChainRoot::default(),
+                &http,
+            ),
+        )
+        .unwrap();
+
+        assert!(authentication.is_guest(), "{authentication:?}");
+        assert_eq!(http.requests(), ["https://jwks.invalid"]);
     }
 
     #[test]

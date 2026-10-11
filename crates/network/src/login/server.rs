@@ -17,6 +17,7 @@ pub struct ServerLoginOptions {
     chain_root: ChainRoot,
     oidc: Option<Arc<AuthOIDC>>,
     require_authentication: bool,
+    allow_guests: bool,
 }
 
 impl ServerLoginOptions {
@@ -44,6 +45,11 @@ impl ServerLoginOptions {
         self.require_authentication = required;
         self
     }
+
+    pub fn allow_guests(mut self, allowed: bool) -> Self {
+        self.allow_guests = allowed;
+        self
+    }
 }
 
 impl Default for ServerLoginOptions {
@@ -57,6 +63,7 @@ impl Default for ServerLoginOptions {
             chain_root: ChainRoot::default(),
             oidc: None,
             require_authentication: true,
+            allow_guests: false,
         }
     }
 }
@@ -207,8 +214,15 @@ impl ServerLogin {
             }
             .into());
         }
-        let login = bedrock_auth::ConnectionRequest::parse(request)?
-            .verify(self.options.oidc.as_deref(), &self.options.chain_root)?;
+        let request = bedrock_auth::ConnectionRequest::parse(request)?;
+        let oidc = self.options.oidc.as_deref();
+        let chain_root = &self.options.chain_root;
+        let authentication = if self.options.allow_guests {
+            request.auth.validate_allowing_guests(oidc, chain_root)?
+        } else {
+            request.auth.validate(oidc, chain_root)?
+        };
+        let login = request.verify_client_data(authentication)?;
         if let Some(expected) = &self.transport_key
             && login.authentication.identity().public_key()? != *expected
         {
@@ -251,7 +265,10 @@ impl ServerLogin {
 mod tests {
     use super::*;
     use crate::login::handshake::client_finish_encryption;
-    use crate::test_helpers::{client_key, identity_key, self_signed_login};
+    use crate::test_helpers::{
+        client_key, forged_guest_login, identity_key, self_signed_login, trusted_oidc,
+        verified_guest_login,
+    };
     use bedrock_auth::{ClientData, ConnectionRequest};
     use bedrock_protocol::V2225;
 
@@ -444,6 +461,54 @@ mod tests {
             failure.farewell.into_iter().next().unwrap().into_event(),
             LoginEvent::Disconnect(_)
         ));
+    }
+
+    fn guest_config() -> ServerLoginOptions {
+        online_config().oidc(trusted_oidc()).allow_guests(true)
+    }
+
+    #[test]
+    fn verified_guest_login_is_accepted_when_the_server_allows_guests() {
+        let mut login = ready_for_login(guest_config());
+
+        let actions = handle(&mut login, verified_guest_login());
+
+        let Some(LoginAction::Complete(done)) = actions.last() else {
+            panic!("a verified guest login completes");
+        };
+        assert!(done.authentication.is_guest(), "{:?}", done.authentication);
+        assert_eq!(done.authentication.identity().display_name, "Guest");
+    }
+
+    #[test]
+    fn guest_login_with_a_forged_token_is_refused_when_the_server_allows_guests() {
+        let mut login = ready_for_login(guest_config());
+
+        let failure = expect_failure(&mut login, forged_guest_login());
+
+        assert!(
+            matches!(
+                failure.error,
+                LoginError::Auth(bedrock_auth::AuthError::Jwt(_))
+            ),
+            "{failure:?}"
+        );
+    }
+
+    #[test]
+    fn verified_guest_login_is_refused_unless_the_server_allows_guests() {
+        let options = offline_config().oidc(trusted_oidc());
+        let mut login = ready_for_login(options);
+
+        let failure = expect_failure(&mut login, verified_guest_login());
+
+        assert!(
+            matches!(
+                failure.error,
+                LoginError::Auth(bedrock_auth::AuthError::GuestLogin)
+            ),
+            "{failure:?}"
+        );
     }
 
     fn encrypting_config() -> ServerLoginOptions {

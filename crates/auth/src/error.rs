@@ -32,7 +32,7 @@ pub enum AuthError {
     XuidWithoutXboxLive,
     #[error("chain is signed by the chain root but carries no XUID")]
     XboxLiveWithoutXuid,
-    #[error("guest logins are not supported")]
+    #[error("guest login refused: guests are not allowed or the token cannot be verified")]
     GuestLogin,
     #[error("invalid client data: {0}")]
     ClientData(#[from] ClientDataError),

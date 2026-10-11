@@ -32,24 +32,33 @@ impl Identity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Authentication {
     Authenticated(Identity),
+    AuthenticatedGuest(Identity),
     Unauthenticated(Identity),
 }
 
 impl Authentication {
     pub fn identity(&self) -> &Identity {
         match self {
-            Self::Authenticated(identity) | Self::Unauthenticated(identity) => identity,
+            Self::Authenticated(identity)
+            | Self::AuthenticatedGuest(identity)
+            | Self::Unauthenticated(identity) => identity,
         }
     }
 
     pub fn into_identity(self) -> Identity {
         match self {
-            Self::Authenticated(identity) | Self::Unauthenticated(identity) => identity,
+            Self::Authenticated(identity)
+            | Self::AuthenticatedGuest(identity)
+            | Self::Unauthenticated(identity) => identity,
         }
     }
 
     pub fn is_authenticated(&self) -> bool {
-        matches!(self, Self::Authenticated(_))
+        matches!(self, Self::Authenticated(_) | Self::AuthenticatedGuest(_))
+    }
+
+    pub fn is_guest(&self) -> bool {
+        matches!(self, Self::AuthenticatedGuest(_))
     }
 }
 
