@@ -14,5 +14,5 @@ pub enum SetScoreboardIdentityPacket<V: ProtoVersion> {
 pub struct IdentityInfoEntry<V: ProtoVersion> {
     pub scoreboard_id: V::ScoreboardId,
     #[endianness(var)]
-    pub player_unique_id: i64,
+    pub player_unique_id: Option<i64>,
 }
