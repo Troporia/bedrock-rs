@@ -38,8 +38,8 @@ pub struct StartGamePacket<V: ProtoVersion> {
     pub is_logging_chat: bool,
     pub server_join_information: Option<ServerJoinInformation<V>>,
     pub server_id: String,
-    pub world_id: String,
     pub scenario_id: String,
+    pub world_id: String,
     pub owner_id: String,
 }
 

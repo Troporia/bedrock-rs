@@ -37,8 +37,8 @@ pub struct StartGamePacket<V: ProtoVersion> {
     pub network_permissions: V::NetworkPermissions,
     pub server_join_information: Option<ServerJoinInformation<V>>,
     pub server_id: String,
-    pub world_id: String,
     pub scenario_id: String,
+    pub world_id: String,
     pub owner_id: String,
 }
 
