@@ -1,6 +1,17 @@
 use crate::encryption::Encryption;
 use crate::error::LoginError;
+use bedrock_auth::Login;
+use p384::elliptic_curve::common::Generate;
 use p384::{PublicKey, SecretKey};
+
+/// Builds the handshake token and the cipher for a verified login, using a fresh server key and
+/// salt. Send the token, then enable the cipher on the connection.
+pub fn begin_encryption(login: &Login) -> Result<(String, Encryption), LoginError> {
+    let identity = login.authentication.identity().public_key()?;
+    let server_key = SecretKey::generate_from_rng(&mut rand::rng());
+    let salt = rand::random::<[u8; 16]>();
+    server_begin_encryption(&identity, &server_key, &salt)
+}
 
 pub fn server_begin_encryption(
     client_identity: &PublicKey,

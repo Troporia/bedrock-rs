@@ -93,8 +93,9 @@ The default feature is the newest version alone, so also check with `--all-featu
 **`network`**: `codec.rs` (batching), `compression.rs` and `encryption.rs` are pure functions
 over `Vec<u8>` and need no socket; test them there. `encode_packets` and `decode_packets` take
 compression and encryption as options, so a test can cover one layer at a time. The crate root,
-including the `login` state machines, is sans-io; everything async lives under `src/tokio/`
-(feature `tokio`): connection, listener, client, session, the login drivers and their errors.
+including the `login` helpers (plain-data functions a server or client calls between its own
+recv and send; no packet sequencing), is sans-io; everything async lives under `src/tokio/`
+(feature `tokio`): connection, listener, client and their errors.
 The transport is `raknet-tokio`, a git dependency; `examples/server.rs` is the end-to-end check for it, and for a
 login flow.
 

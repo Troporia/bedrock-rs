@@ -285,13 +285,11 @@ mod frame_tests {
 #[cfg(test)]
 mod unread_tests {
     use super::*;
-    use crate::login::packets::{LoginPackets, LoginStatus};
+    use crate::test_helpers::login_success;
     use bedrock_protocol::V2225;
 
     fn frame_with_a_trailing_byte() -> Vec<u8> {
-        let batch =
-            encode_packets::<V2225>(&[V2225::play_status(LoginStatus::LoginSuccess)], None, None)
-                .unwrap();
+        let batch = encode_packets::<V2225>(&[login_success()], None, None).unwrap();
         let mut frame = split_batch(&batch).unwrap()[0].to_vec();
         frame.push(0);
         frame
@@ -316,7 +314,7 @@ mod unread_tests {
 #[cfg(test)]
 mod header_tests {
     use super::*;
-    use crate::login::packets::{LoginPackets, LoginStatus};
+    use crate::test_helpers::login_success;
     use bedrock_protocol::V2225;
 
     fn split_screen_header() -> PacketHeader {
@@ -329,7 +327,7 @@ mod header_tests {
 
     #[test]
     fn sub_client_ids_survive_encode_then_decode() {
-        let packet = V2225::play_status(LoginStatus::LoginSuccess);
+        let packet = login_success();
         let batch =
             encode_packets_with_header::<V2225>(&[packet], &split_screen_header(), None, None)
                 .unwrap();
@@ -346,7 +344,7 @@ mod header_tests {
 
     #[test]
     fn every_frame_in_a_batch_carries_the_chosen_ids() {
-        let packets = vec![V2225::play_status(LoginStatus::LoginSuccess); 3];
+        let packets = vec![login_success(); 3];
         let batch =
             encode_packets_with_header::<V2225>(&packets, &split_screen_header(), None, None)
                 .unwrap();
@@ -361,7 +359,7 @@ mod header_tests {
 
     #[test]
     fn default_encoding_keeps_the_zero_sub_client_bytes() {
-        let packet = V2225::play_status(LoginStatus::LoginSuccess);
+        let packet = login_success();
 
         let batch = encode_packets::<V2225>(&[packet], None, None).unwrap();
 
@@ -370,7 +368,7 @@ mod header_tests {
 
     #[test]
     fn chosen_ids_change_only_the_header_bytes() {
-        let packet = V2225::play_status(LoginStatus::LoginSuccess);
+        let packet = login_success();
 
         let batch =
             encode_packets_with_header::<V2225>(&[packet], &split_screen_header(), None, None)
@@ -383,15 +381,13 @@ mod header_tests {
 #[cfg(test)]
 mod each_tests {
     use super::*;
-    use crate::login::packets::{LoginPackets, LoginStatus};
+    use crate::test_helpers::login_success;
     use bedrock_protocol::V2225;
 
     const GARBAGE: [u8; 2] = [2, 1];
 
     fn good_frame() -> Vec<u8> {
-        let batch =
-            encode_packets::<V2225>(&[V2225::play_status(LoginStatus::LoginSuccess)], None, None)
-                .unwrap();
+        let batch = encode_packets::<V2225>(&[login_success()], None, None).unwrap();
         split_batch(&batch).unwrap()[0].to_vec()
     }
 

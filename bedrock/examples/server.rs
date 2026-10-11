@@ -1,13 +1,21 @@
+use bedrock::auth::Login;
 use bedrock::core::world::dimension::Dimension;
 use bedrock::network::compression::Compression;
-use bedrock::network::login::server::ServerLoginOptions;
+use bedrock::network::login::{
+    LoginOptions, NetworkSettings, begin_encryption, bind_transport_identity, check_protocol,
+};
 use bedrock::network::tokio::Connection;
 use bedrock::network::tokio::Listener;
+use bedrock::network::tokio::error::ConnectionError;
+use bedrock::network::tokio::transport::Transport;
+use bedrock::protocol::v662::enums::PacketCompressionAlgorithm;
 use bedrock::protocol::v662::enums::{
     ChatRestrictionLevel, Difficulty, EditorWorldType, GamePublishSetting, GameType, GeneratorType,
     PlayStatus, SpawnBiomeType,
 };
-use bedrock::protocol::v662::packets::PlayStatusPacket;
+use bedrock::protocol::v662::packets::{
+    NetworkSettingsPacket, PlayStatusPacket, ServerToClientHandshakePacket,
+};
 use bedrock::protocol::v662::types::{
     ActorRuntimeID, ActorUniqueID, BaseGameVersion, EduSharedUriResource, Experiments,
     NetworkPermissions, SpawnSettings,
@@ -28,6 +36,81 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 type Protocol = V2225;
+
+const PROTOCOL: i32 = Protocol::PROTOCOL_VERSION as i32;
+
+async fn recv_one(conn: &mut Connection<Protocol>) -> Result<Protocol, ConnectionError> {
+    let batch = conn.recv().await?;
+    batch
+        .into_iter()
+        .next()
+        .ok_or(ConnectionError::ConnectionClosed)
+}
+
+fn play_status(status: PlayStatus) -> Protocol {
+    Protocol::PlayStatusPacket(Box::new(PlayStatusPacket { status }))
+}
+
+async fn login(
+    conn: &mut Connection<Protocol>,
+) -> Result<Login, Box<dyn std::error::Error + Send + Sync>> {
+    let settings = NetworkSettings::default();
+    let options = LoginOptions::default().require_authentication(false);
+
+    let Protocol::RequestNetworkSettingsPacket(request) = recv_one(conn).await? else {
+        return Err("expected a network settings request".into());
+    };
+    if let Err(error) = check_protocol(request.client_network_version, PROTOCOL) {
+        let status = if request.client_network_version < PROTOCOL {
+            PlayStatus::LoginFailedClientOld
+        } else {
+            PlayStatus::LoginFailedServerOld
+        };
+        conn.send(&[play_status(status)]).await?;
+        return Err(error.into());
+    }
+
+    let algorithm = match settings.compression {
+        Compression::Zlib { .. } => PacketCompressionAlgorithm::ZLib,
+        Compression::Snappy { .. } => PacketCompressionAlgorithm::Snappy,
+        Compression::None => PacketCompressionAlgorithm::None,
+    };
+    conn.send(&[Protocol::NetworkSettingsPacket(Box::new(
+        NetworkSettingsPacket {
+            compression_threshold: settings.threshold(),
+            compression_algorithm: algorithm,
+            client_throttle_enabled: false,
+            client_throttle_threshold: 0,
+            client_throttle_scalar: 0.0,
+        },
+    ))])
+    .await?;
+    conn.enable_compression(settings.compression);
+
+    let Protocol::LoginPacket(packet) = recv_one(conn).await? else {
+        return Err("expected a login".into());
+    };
+    check_protocol(packet.client_network_version, PROTOCOL)?;
+    let login = options.verify(&packet.connection_request)?;
+    if let Some(key) = conn.get_transport_conn().login_key() {
+        bind_transport_identity(&login, &key)?;
+    }
+
+    let (token, encryption) = begin_encryption(&login)?;
+    conn.send(&[Protocol::ServerToClientHandshakePacket(Box::new(
+        ServerToClientHandshakePacket {
+            handshake_web_token: token,
+        },
+    ))])
+    .await?;
+    conn.enable_encryption(encryption);
+
+    let Protocol::ClientToServerHandshakePacket(_) = recv_one(conn).await? else {
+        return Err("expected the client handshake".into());
+    };
+    conn.send(&[play_status(PlayStatus::LoginSuccess)]).await?;
+    Ok(login)
+}
 
 #[tokio::main]
 async fn main() {
@@ -54,22 +137,16 @@ async fn main() {
 async fn handle_login(unknown_conn: Connection<Unknown>) {
     let time_start = Instant::now();
 
-    let options = ServerLoginOptions::default()
-        .compression(Compression::None)
-        .encryption(false)
-        .require_authentication(false);
-    let session = match unknown_conn.into_ver::<Protocol>().accept(&options).await {
-        Ok(session) => session,
+    let mut conn = unknown_conn.into_ver::<Protocol>();
+    let login = match login(&mut conn).await {
+        Ok(login) => login,
         Err(error) => {
             println!("Login failed: {error}");
+            conn.close().await;
             return;
         }
     };
-    println!(
-        "Login: {}",
-        session.identity().authentication.identity().display_name
-    );
-    let (mut conn, _, _) = session.into_parts();
+    println!("Login: {}", login.authentication.identity().display_name);
 
     conn.send(&[
         Protocol::ResourcePacksInfoPacket(Box::new(ResourcePacksInfoPacket {

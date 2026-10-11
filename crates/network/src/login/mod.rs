@@ -1,16 +1,14 @@
+//! Version-agnostic helpers for the login exchange.
+//!
+//! Nothing here sequences packets. A server or client receives, matches its own protocol
+//! version's packet variants, calls these helpers with plain data and sends the reply.
+
 pub mod client;
 pub mod handshake;
-pub mod packets;
 pub mod server;
+pub mod settings;
 
-use crate::compression::Compression;
-use crate::encryption::Encryption;
-
-pub use packets::{DisconnectInfo, LoginEvent, LoginPackets, LoginStatus, NetworkSettings};
-
-pub enum LoginAction<V, Done = ()> {
-    Send(Vec<V>),
-    EnableCompression(Compression),
-    EnableEncryption(Box<Encryption>),
-    Complete(Done),
-}
+pub use client::ClientIdentity;
+pub use handshake::{begin_encryption, client_finish_encryption, server_begin_encryption};
+pub use server::{LoginOptions, bind_transport_identity};
+pub use settings::{NetworkSettings, check_protocol};

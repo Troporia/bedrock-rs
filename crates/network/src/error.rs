@@ -67,18 +67,12 @@ pub enum EncryptionError {
 pub enum LoginError {
     #[error("Auth Error: {0}")]
     Auth(#[from] bedrock_auth::AuthError),
-    #[error("Unexpected packet while {state}")]
-    UnexpectedPacket { state: &'static str },
+    #[error("Compression Error: {0}")]
+    Compression(#[from] CompressionError),
     #[error("Client protocol {client} does not match server protocol {server}")]
     ProtocolMismatch { client: i32, server: i32 },
     #[error("Login is not authenticated")]
     NotAuthenticated,
     #[error("Login identity key differs from the one the transport authenticated")]
     TransportIdentityMismatch,
-    #[error("Login protocol {login} differs from the requested protocol {requested}")]
-    ProtocolChanged { requested: i32, login: i32 },
-    #[error("Server rejected the login: {0}")]
-    LoginRejected(crate::login::LoginStatus),
-    #[error("Server disconnected during login: {0}")]
-    Disconnected(crate::login::DisconnectInfo),
 }

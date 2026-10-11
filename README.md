@@ -37,12 +37,12 @@ To maintain modularity and scalability, **bedrock-rs** is divided into multiple 
   - RakNet-based transport layer for accepting, tracking, and communicating with client connections.  
   - Packet batching/codec support, including Zlib/Snappy compression and AES encryption.  
   - Server MOTD (server list ping) construction and connection listener utilities.  
-  - The `network` feature is sans-io (codec, compression, encryption, login state machines) and pulls neither tokio nor RakNet; enable `network-tokio` for the `network::tokio` module: `Connection`, `Listener::builder`, `Client`, `Session`, and the async login methods `Connection::accept` and `Connection::connect`.  
+  - The `network` feature is sans-io (codec, compression, encryption, and the version-agnostic login helpers in `network::login`: `LoginOptions`, `NetworkSettings`, `check_protocol`, `begin_encryption`, `ClientIdentity`) and pulls neither tokio nor RakNet; enable `network-tokio` for the `network::tokio` module: `Connection`, `Listener::builder` and `Client`. A server or client receives, matches its own version's login packets, calls the helpers and sends the reply; `bedrock/examples/server.rs` and `client.rs` show the whole exchange.  
   - `network-nethernet` adds the sans-io NetherNet helpers (`IdentityStore`, `server_data`); `network-nethernet-tokio` adds NetherNet to `Listener::builder`, which takes any mix of `raknet`, `nethernet_http` and `nethernet_lan`.  
 
 - [`bedrock::auth`](crates/auth)  
   - Validation of Xbox Live login identity chains (JWTs) against Microsoft’s OIDC discovery service.  
-  - Online and offline (self-signed) logins; guest (split-screen) logins are rejected unless the caller opts in (`AuthData::validate_allowing_guests`, `ServerLoginOptions::allow_guests`), and are then verified like online logins.  
+  - Online and offline (self-signed) logins; guest (split-screen) logins are rejected unless the caller opts in (`AuthData::validate_allowing_guests`, `LoginOptions::allow_guests`), and are then verified like online logins.  
   - No I/O of its own: bring any HTTP client, or enable `auth-ureq` (blocking, no tokio) or `auth-reqwest` (async).  
 
 - [`bedrock::form`](crates/form)  

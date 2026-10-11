@@ -192,7 +192,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
 mod tests {
     use super::*;
     use crate::codec::{encode_packets, join_batch, split_batch};
-    use crate::login::{LoginPackets, LoginStatus};
+    use crate::test_helpers::login_success;
     use crate::tokio::memory::memory_connections;
     use bedrock_protocol::V2225;
 
@@ -208,7 +208,7 @@ mod tests {
         assert!(a.compression.is_some());
         assert!(a.encryption.is_none());
 
-        let batch = vec![V2225::play_status(LoginStatus::LoginSuccess); 4000];
+        let batch = vec![login_success(); 4000];
         a.send(&batch).await.unwrap();
 
         assert_eq!(b.recv().await.unwrap().len(), 4000);
@@ -223,7 +223,7 @@ mod tests {
             target_sub_client_id: 1,
         };
 
-        a.send_with_header(&[V2225::play_status(LoginStatus::LoginSuccess)], &header)
+        a.send_with_header(&[login_success()], &header)
             .await
             .unwrap();
 
@@ -250,9 +250,7 @@ mod tests {
     }
 
     fn batch_with_a_bad_packet_at(position: usize) -> Vec<u8> {
-        let good =
-            encode_packets::<V2225>(&[V2225::play_status(LoginStatus::LoginSuccess)], None, None)
-                .unwrap();
+        let good = encode_packets::<V2225>(&[login_success()], None, None).unwrap();
         let good = split_batch(&good).unwrap()[0].to_vec();
         let mut frames = vec![good.clone(), good.clone(), good];
         frames[position] = vec![2, 1];

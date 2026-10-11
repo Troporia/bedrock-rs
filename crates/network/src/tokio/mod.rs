@@ -2,14 +2,13 @@ pub mod client;
 pub mod connection;
 pub mod error;
 pub mod listener;
-pub mod login;
-pub mod session;
 pub mod transport;
 
 pub use client::Client;
 pub use connection::{BadPacketPolicy, Connection};
 pub use listener::{Listener, ListenerBuilder};
-pub use session::Session;
 
+#[cfg(test)]
+mod explicit_login;
 #[cfg(test)]
 mod memory;

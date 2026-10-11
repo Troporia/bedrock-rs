@@ -1,4 +1,4 @@
-use crate::error::{LoginError, NetworkCodecError};
+use crate::error::NetworkCodecError;
 use crate::raknet::RakNetGamePacket;
 use raknet_tokio::prelude::{RakClientError, RakServerError, RakSessionError};
 use std::io::Error as IOError;
@@ -64,21 +64,9 @@ pub enum RakNetError {
 // }
 
 #[derive(Error, Debug)]
-pub enum SessionError {
-    #[error("Login Error: {0}")]
-    Login(#[from] LoginError),
-    #[error("Connection Error: {0}")]
-    Connection(#[from] ConnectionError),
-}
-
-#[derive(Error, Debug)]
 pub enum ClientError {
     #[error("RakNet Error: {0}")]
     RakNet(#[from] RakNetError),
-    #[error("Session Error: {0}")]
-    Session(#[from] SessionError),
-    #[error("Auth Error: {0}")]
-    Auth(#[from] bedrock_auth::AuthError),
     #[error("Timed out connecting")]
     Timeout,
 }

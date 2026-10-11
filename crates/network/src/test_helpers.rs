@@ -2,9 +2,11 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bedrock_auth::{
     AsyncHttpClient, AuthData, AuthOIDC, AuthPayload, AuthType, ClientData, ConnectionRequest,
-    HttpError, encode_public_key,
+    HttpClient, HttpError, encode_public_key,
 };
 use bedrock_protocol::V2225;
+use bedrock_protocol::v662::enums::PlayStatus;
+use bedrock_protocol::v662::packets::PlayStatusPacket;
 use p384::SecretKey;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -14,8 +16,6 @@ use rsa::traits::PublicKeyParts;
 use serde_json::json;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use crate::login::LoginPackets;
 
 pub(crate) fn identity_key() -> SecretKey {
     SecretKey::from_slice(&[0x33u8; 48]).unwrap()
@@ -89,14 +89,26 @@ impl RotatedKeysHttp {
     }
 }
 
-impl AsyncHttpClient for RotatedKeysHttp {
-    async fn get(&self, url: &str) -> Result<Vec<u8>, HttpError> {
+impl RotatedKeysHttp {
+    fn respond(&self, url: &str) -> Result<Vec<u8>, HttpError> {
         self.requests.lock().unwrap().push(url.to_owned());
         if url == JWKS_URI {
             Ok(jwks_json(self.published_kid).to_string().into_bytes())
         } else {
             Err(format!("no response for {url}").into())
         }
+    }
+}
+
+impl AsyncHttpClient for RotatedKeysHttp {
+    async fn get(&self, url: &str) -> Result<Vec<u8>, HttpError> {
+        self.respond(url)
+    }
+}
+
+impl HttpClient for RotatedKeysHttp {
+    fn get(&self, url: &str) -> Result<Vec<u8>, HttpError> {
+        self.respond(url)
     }
 }
 
@@ -122,25 +134,25 @@ fn oidc_token(display_name: &str) -> String {
     format!("{message}.{signature}")
 }
 
-fn oidc_login_with_token(auth_type: AuthType, token: String) -> V2225 {
+fn oidc_login_with_token(auth_type: AuthType, token: String) -> Vec<u8> {
     let client_data = ClientData::offline("1.21.0", "127.0.0.1:19132", "Guest");
     let auth = AuthData {
         auth_type,
         auth_payload: AuthPayload::Token(token),
     };
     let request = ConnectionRequest::with_auth(auth, &client_key(), &client_data).unwrap();
-    V2225::login(V2225::PROTOCOL_VERSION, request.to_bytes().unwrap())
+    request.to_bytes().unwrap()
 }
 
-pub(crate) fn verified_guest_login() -> V2225 {
+pub(crate) fn verified_guest_login() -> Vec<u8> {
     oidc_login_with_token(AuthType::Guest, oidc_token("Guest"))
 }
 
-pub(crate) fn verified_online_login() -> V2225 {
+pub(crate) fn verified_online_login() -> Vec<u8> {
     oidc_login_with_token(AuthType::Online, oidc_token("Guest"))
 }
 
-pub(crate) fn forged_guest_login() -> V2225 {
+pub(crate) fn forged_guest_login() -> Vec<u8> {
     let genuine = oidc_token("Guest");
     let altered = oidc_token("Host");
     let parts = genuine.split('.').collect::<Vec<_>>();
@@ -151,9 +163,15 @@ pub(crate) fn forged_guest_login() -> V2225 {
     )
 }
 
-pub(crate) fn self_signed_login(display_name: &str) -> V2225 {
+pub(crate) fn self_signed_login(display_name: &str) -> Vec<u8> {
     let client_data = ClientData::offline("1.21.0", "127.0.0.1:19132", display_name);
     let request =
         ConnectionRequest::self_signed(&client_key(), display_name, &client_data).unwrap();
-    V2225::login(V2225::PROTOCOL_VERSION, request.to_bytes().unwrap())
+    request.to_bytes().unwrap()
+}
+
+pub(crate) fn login_success() -> V2225 {
+    V2225::PlayStatusPacket(Box::new(PlayStatusPacket {
+        status: PlayStatus::LoginSuccess,
+    }))
 }

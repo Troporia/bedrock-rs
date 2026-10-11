@@ -31,7 +31,7 @@ compiling against the RakNet API, run `cargo update -p raknet-tokio`. `bedrock_l
 | `bedrock/src/lib.rs` | The `bedrock` facade: one `pub mod` per crate, each behind a feature. |
 | `crates/<name>/` | One crate per concern: `protocol_core`, `macros`, `protocol`, `network`, `auth`, `form`, `level`, `shared`. `README.md` says what each does. |
 | `xtask/` | The protocol code generator. `cargo xtask` is the whole interface. |
-| `bedrock/examples/server.rs` | A login-flow server against the newest protocol; the end-to-end check. |
+| `bedrock/examples/server.rs` | A login-flow server against the newest protocol, driving the login explicitly with the `network::login` helpers; the end-to-end check. `client.rs` is its counterpart. |
 
 ## Workflow: test first
 
