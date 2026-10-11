@@ -10,8 +10,8 @@ pub struct ClientBoundMatchmakingStatePacket {
 
 #[derive(ProtoCodec, Clone, Debug)]
 pub struct MatchmakingStateOptions {
-    pub triggering_player_name: Option<String>,
-    pub triggered_by_local_player: Option<bool>,
+    pub triggering_player_name: String,
+    pub triggered_by_local_player: bool,
 }
 
 #[derive(ProtoCodec, Clone, Debug)]
