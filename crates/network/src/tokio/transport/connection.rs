@@ -20,6 +20,11 @@ pub trait Transport {
     fn close(&self) -> impl Future<Output = ()> + Send;
 
     fn is_closed(&self) -> impl Future<Output = bool> + Send;
+
+    /// The player identity key the transport itself authenticated, if any.
+    fn login_key(&self) -> Option<p384::PublicKey> {
+        None
+    }
 }
 
 pub enum TransportLayerConnection {
@@ -63,5 +68,9 @@ impl Transport for TransportLayerConnection {
 
     async fn is_closed(&self) -> bool {
         delegate!(self, conn => conn.is_closed().await)
+    }
+
+    fn login_key(&self) -> Option<p384::PublicKey> {
+        delegate!(self, conn => conn.login_key())
     }
 }

@@ -11,6 +11,7 @@ pub(crate) struct MemoryTransport {
     tx: mpsc::UnboundedSender<Vec<u8>>,
     rx: mpsc::UnboundedReceiver<Vec<u8>>,
     closed: Arc<AtomicBool>,
+    login_key: Option<p384::PublicKey>,
 }
 
 impl MemoryTransport {
@@ -23,11 +24,13 @@ impl MemoryTransport {
             tx: a_tx,
             rx: a_rx,
             closed: closed.clone(),
+            login_key: None,
         };
         let b = Self {
             tx: b_tx,
             rx: b_rx,
             closed,
+            login_key: None,
         };
 
         (a, b)
@@ -65,12 +68,28 @@ impl Transport for MemoryTransport {
     async fn is_closed(&self) -> bool {
         self.closed.load(Ordering::SeqCst) || self.tx.is_closed()
     }
+
+    fn login_key(&self) -> Option<p384::PublicKey> {
+        self.login_key
+    }
 }
 
 pub(crate) type MemoryConnection = Connection<V2225, MemoryTransport>;
 
 pub(crate) fn memory_connections() -> (MemoryConnection, MemoryConnection) {
     let (a, b) = MemoryTransport::pair();
+    (
+        Connection::from_transport_conn(a),
+        Connection::from_transport_conn(b),
+    )
+}
+
+/// The first connection's transport reports `key` as the identity it authenticated.
+pub(crate) fn memory_connections_bound_to(
+    key: p384::PublicKey,
+) -> (MemoryConnection, MemoryConnection) {
+    let (mut a, b) = MemoryTransport::pair();
+    a.login_key = Some(key);
     (
         Connection::from_transport_conn(a),
         Connection::from_transport_conn(b),

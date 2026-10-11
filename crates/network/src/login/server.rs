@@ -121,6 +121,7 @@ fn finish<V: LoginPackets>(login: Box<Login>) -> Vec<ServerLoginAction<V>> {
 pub struct ServerLogin {
     options: ServerLoginOptions,
     state: ServerState,
+    transport_key: Option<p384::PublicKey>,
 }
 
 impl ServerLogin {
@@ -128,7 +129,13 @@ impl ServerLogin {
         Self {
             options,
             state: ServerState::AwaitSettings,
+            transport_key: None,
         }
+    }
+
+    /// The identity key the transport already authenticated, which the login chain must carry.
+    pub fn bind_transport_key(&mut self, key: p384::PublicKey) {
+        self.transport_key = Some(key);
     }
 
     pub fn handle<V: LoginPackets>(
@@ -202,6 +209,11 @@ impl ServerLogin {
         }
         let login = bedrock_auth::ConnectionRequest::parse(request)?
             .verify(self.options.oidc.as_deref(), &self.options.chain_root)?;
+        if let Some(expected) = &self.transport_key
+            && login.authentication.identity().public_key()? != *expected
+        {
+            return Err(LoginError::TransportIdentityMismatch.into());
+        }
         if self.options.require_authentication && !login.authentication.is_authenticated() {
             return Err(LoginFailure::with_farewell(
                 LoginError::NotAuthenticated,
@@ -309,6 +321,37 @@ mod tests {
         };
         assert_eq!(done.authentication.identity().display_name, "Steve");
         assert!(actions.next().is_none());
+    }
+
+    fn settled_login() -> ServerLogin {
+        let mut login = ServerLogin::new(offline_config());
+        handle(
+            &mut login,
+            V2225::request_network_settings(V2225::PROTOCOL_VERSION),
+        );
+        login
+    }
+
+    #[test]
+    fn a_login_whose_key_differs_from_the_transport_identity_is_rejected() {
+        let mut login = settled_login();
+        let other = SecretKey::generate_from_rng(&mut rand::rng()).public_key();
+        login.bind_transport_key(other);
+
+        let failure = expect_failure(&mut login, self_signed_login("Steve"));
+        assert!(matches!(
+            failure.error,
+            LoginError::TransportIdentityMismatch
+        ));
+    }
+
+    #[test]
+    fn a_login_carrying_the_transport_identity_key_succeeds() {
+        let mut login = settled_login();
+        login.bind_transport_key(client_key().public_key());
+
+        let actions = handle(&mut login, self_signed_login("Steve"));
+        assert!(matches!(actions.last(), Some(LoginAction::Complete(_))));
     }
 
     #[test]

@@ -2,7 +2,7 @@ use crate::motd::BedrockMOTD;
 use crate::tokio::error::TransportLayerError;
 use bytes::Bytes;
 use nethernet_tokio::{
-    AcceptedSession, Addr, ConnectionConfig, HttpSignaling, NetherClient, NetherError,
+    AcceptedSession, Addr, ConnectionConfig, HttpSignaling, NetherClient, NetherError, PlayerInfo,
     ServerIdentity, Session, SessionReceiver,
 };
 use raknet_tokio::prelude::RakSessionConfig;
@@ -15,16 +15,19 @@ pub struct NetherNetConnection {
     reliable: SessionReceiver,
     _unreliable: SessionReceiver,
     remote: Addr,
+    player: Option<Arc<PlayerInfo>>,
 }
 
 impl NetherNetConnection {
     pub async fn accepted(accepted: AcceptedSession) -> Self {
         let remote = accepted.session.remote_addr().await;
+        let player = accepted.session.player().await;
         Self {
             session: accepted.session,
             reliable: accepted.reliable,
             _unreliable: accepted.unreliable,
             remote,
+            player,
         }
     }
 
@@ -77,5 +80,15 @@ impl NetherNetConnection {
 
     pub async fn is_closed(&self) -> bool {
         self.session.is_closed().await
+    }
+
+    /// The player whose signaling token the server validated, when it validates tokens.
+    pub fn player(&self) -> Option<&PlayerInfo> {
+        self.player.as_deref()
+    }
+
+    pub fn login_key(&self) -> Option<p384::PublicKey> {
+        let key = self.player.as_ref()?.client_public_key().ok()?;
+        Some(p384::PublicKey::from(&key))
     }
 }

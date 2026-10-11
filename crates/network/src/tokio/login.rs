@@ -15,6 +15,9 @@ impl<V: LoginPackets, T: Transport> Connection<V, T> {
         options: &ServerLoginOptions,
     ) -> Result<Session<V, Box<Login>, T>, SessionError> {
         let mut machine = ServerLogin::new(options.clone());
+        if let Some(key) = self.get_transport_conn().login_key() {
+            machine.bind_transport_key(key);
+        }
         let (connection, login, pending) =
             drive(self, Vec::new(), |packet| machine.handle(packet)).await?;
         Ok(Session::new(connection, login, pending))
@@ -118,7 +121,7 @@ mod tests {
     use crate::test_helpers::{
         client_key, identity_key, self_signed_login, self_signed_request_bytes,
     };
-    use crate::tokio::memory::{MemoryConnection, memory_connections};
+    use crate::tokio::memory::{MemoryConnection, memory_connections, memory_connections_bound_to};
     use bedrock_protocol::V2225;
     use std::time::Duration;
 
@@ -177,6 +180,28 @@ mod tests {
             .unwrap();
         let up = server.connection_mut().recv().await.unwrap();
         assert!(up.into_iter().all(is_player_spawn));
+    }
+
+    #[::tokio::test]
+    async fn a_login_from_another_key_than_the_transport_identity_is_refused() {
+        let other = p384::SecretKey::from_slice(&[0x55u8; 48])
+            .unwrap()
+            .public_key();
+        let (server_conn, client_conn) = memory_connections_bound_to(other);
+        let options = zlib_config(false);
+
+        let (server, _client) = ::tokio::join!(
+            server_conn.accept(&options),
+            client_conn.connect(ClientIdentity::new(
+                identity_key(),
+                self_signed_request_bytes()
+            ))
+        );
+
+        assert!(matches!(
+            server,
+            Err(SessionError::Login(LoginError::TransportIdentityMismatch))
+        ));
     }
 
     #[::tokio::test(start_paused = true)]
