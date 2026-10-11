@@ -3,8 +3,8 @@ pub mod shard;
 use super::error::ConnectionError;
 use super::transport::{Transport, TransportLayerConnection};
 use crate::codec::{
-    compress_packets, decode_packets, decompress_packets, decrypt_packets, encode_packets,
-    encrypt_packets,
+    UnreadBytes, compress_packets, decode_packets, decompress_packets, decrypt_packets,
+    encode_packets, encrypt_packets,
 };
 use crate::compression::Compression;
 use crate::encryption::Encryption;
@@ -21,6 +21,7 @@ pub struct Connection<V: Packets, T = TransportLayerConnection> {
     /// Represents the connections encryption, the encryption gets initialized in the
     /// login process, if encryption is enabled
     pub encryption: Option<Encryption>,
+    pub unread_bytes: UnreadBytes,
     _version_marker: PhantomData<V>,
 }
 
@@ -30,6 +31,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             transport_layer: self.transport_layer,
             compression: self.compression,
             encryption: self.encryption,
+            unread_bytes: self.unread_bytes,
             _version_marker: PhantomData,
         }
     }
@@ -39,6 +41,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             transport_layer,
             compression: None,
             encryption: None,
+            unread_bytes: UnreadBytes::default(),
             _version_marker: PhantomData,
         }
     }
@@ -82,6 +85,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             self.compression.as_ref(),
             self.encryption.as_mut(),
             self.transport_layer.max_message_len(),
+            self.unread_bytes,
         )?;
 
         Ok(packets)

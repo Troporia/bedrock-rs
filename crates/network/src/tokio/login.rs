@@ -70,7 +70,8 @@ where
         }
         let batch = connection.recv_batch().await?;
         for frame in split_batch(&batch).map_err(ConnectionError::from)? {
-            let packet = decode_packet::<V>(frame).map_err(ConnectionError::from)?;
+            let packet = decode_packet::<V>(frame, connection.unread_bytes)
+                .map_err(ConnectionError::from)?;
             if done.is_some() {
                 pending.push(packet);
                 continue;
