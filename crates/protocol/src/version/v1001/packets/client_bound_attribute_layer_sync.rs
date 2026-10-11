@@ -49,18 +49,10 @@ pub struct AttributeLayerData {
 pub struct AttributeLayerSettings {
     #[endianness(le)]
     pub priority: i32,
-    pub weight: AttributeLayerWeight,
+    #[endianness(le)]
+    pub weight: f32,
     pub enabled: bool,
     pub transitions_paused: bool,
-}
-
-#[derive(ProtoCodec, Clone, Debug)]
-#[enum_endianness(var)]
-#[enum_repr(u32)]
-#[repr(u32)]
-pub enum AttributeLayerWeight {
-    Float(#[endianness(le)] f64) = 0,
-    String(String) = 1,
 }
 
 #[derive(ProtoCodec, Clone, Debug)]
@@ -96,9 +88,9 @@ pub enum AttributeData {
         #[str]
         operation: FloatAttributeOperation,
         #[endianness(le)]
-        constraint_min: f32,
+        constraint_min: Option<f32>,
         #[endianness(le)]
-        constraint_max: f32,
+        constraint_max: Option<f32>,
     } = 1,
     Color {
         value: Color255RGBA,

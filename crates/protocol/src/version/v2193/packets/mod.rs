@@ -6,6 +6,7 @@ macro_rules! export {
 }
 
 export!(boss_event);
+export!(client_bound_attribute_layer_sync);
 export!(client_bound_update_sound_data);
 export!(inventory_transaction);
 export!(play_sound);

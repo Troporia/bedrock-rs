@@ -1,6 +1,7 @@
 use crate::version::v1001::packets::{
     BoolAttributeOperation, ColorAttributeOperation, FloatAttributeOperation,
 };
+use crate::version::v2193::packets::NoiseAlignment;
 use bedrock_macros::{ProtoCodec, packet};
 
 #[packet(id = 345, direction = "server_to_client")]
@@ -50,18 +51,10 @@ pub struct AttributeLayerData {
 pub struct AttributeLayerSettings {
     #[endianness(le)]
     pub priority: i32,
-    pub weight: AttributeLayerWeight,
+    #[endianness(le)]
+    pub weight: f32,
     pub enabled: bool,
     pub transitions_paused: bool,
-}
-
-#[derive(ProtoCodec, Clone, Debug)]
-#[enum_endianness(var)]
-#[enum_repr(u32)]
-#[repr(u32)]
-pub enum AttributeLayerWeight {
-    Float(#[endianness(le)] f32) = 0,
-    String(String) = 1,
 }
 
 #[derive(ProtoCodec, Clone, Debug)]
@@ -117,20 +110,6 @@ pub struct AttributeNoiseTransitionSettings {
 }
 
 #[derive(ProtoCodec, Clone, Debug)]
-pub struct NoiseAlignment {
-    pub alignment_type: NoiseAlignmentType,
-    #[endianness(var)]
-    pub value: u32,
-}
-
-#[derive(ProtoCodec, Clone, Debug)]
-#[enum_repr(u8)]
-#[repr(u8)]
-pub enum NoiseAlignmentType {
-    MinLocalTransitionEnd = 0,
-}
-
-#[derive(ProtoCodec, Clone, Debug)]
 #[enum_endianness(var)]
 #[enum_repr(u32)]
 #[repr(u32)]
@@ -145,6 +124,10 @@ pub enum AttributeData {
         value: f32,
         #[str]
         operation: FloatAttributeOperation,
+        #[endianness(le)]
+        constraint_min: Option<f32>,
+        #[endianness(le)]
+        constraint_max: Option<f32>,
     } = 1,
     Color {
         value: Color255RGBA,
@@ -171,7 +154,7 @@ mod tests {
     #[test]
     fn update_environment_reads_a_typed_payload() {
         let bytes = [
-            2, 1, b'a', 0, 1, 1, b'b', 0, 1, 0, 0, 0x80, 0x3f, 3, b'a', b'd', b'd',
+            2, 1, b'a', 0, 1, 1, b'b', 0, 1, 0, 0, 0x80, 0x3f, 3, b'a', b'd', b'd', 0, 0,
         ];
         let packet =
             ClientBoundAttributeLayerSyncPacket::deserialize(&mut Cursor::new(&bytes[..])).unwrap();

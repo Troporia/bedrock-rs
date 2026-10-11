@@ -8853,7 +8853,7 @@ mod inner {
         type ChangeMobPropertyPacket = crate::version::v662::packets::ChangeMobPropertyPacket<Self>;
         type ChunkRadiusUpdatedPacket = crate::version::v662::packets::ChunkRadiusUpdatedPacket;
         type ClientBoundAttributeLayerSyncPacket =
-            crate::version::v944::packets::ClientBoundAttributeLayerSyncPacket;
+            crate::version::v975::packets::ClientBoundAttributeLayerSyncPacket;
         type ClientBoundCloseFormPacket = crate::version::v686::packets::ClientBoundCloseFormPacket;
         type ClientBoundControlSchemeSetPacket =
             crate::version::v800::packets::ClientBoundControlSchemeSetPacket<Self>;

@@ -58,7 +58,7 @@ pub struct AttributeLayerSettings {
 #[enum_repr(u32)]
 #[repr(u32)]
 pub enum AttributeLayerWeight {
-    Float(#[endianness(le)] f64) = 0,
+    Float(#[endianness(le)] f32) = 0,
     String(String) = 1,
 }
 
@@ -92,9 +92,9 @@ pub enum AttributeData {
         #[str]
         operation: FloatAttributeOperation,
         #[endianness(le)]
-        constraint_min: f32,
+        constraint_min: Option<f32>,
         #[endianness(le)]
-        constraint_max: f32,
+        constraint_max: Option<f32>,
     } = 1,
     Color {
         value: Color255RGBA,
