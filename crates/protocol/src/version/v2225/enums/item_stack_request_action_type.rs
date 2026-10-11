@@ -63,7 +63,7 @@ pub enum ItemStackRequestActionType<V: ProtoVersion> {
         filtered_strings_index: i32,
     },
     CraftRepairAndDisenchant {
-        recipe_network_id: u32,
+        recipe_network_id: i32,
         number_of_requested_crafts: i8,
         repair_cost: i32,
     },
@@ -194,7 +194,7 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
             } => {
                 <i32 as ProtoCodecVAR>::serialize(hotbar_slot, stream)?;
                 <i32 as ProtoCodecVAR>::serialize(predicted_durability, stream)?;
-                <i32 as ProtoCodecVAR>::serialize(stack_network_id, stream)?;
+                <i32 as ProtoCodecLE>::serialize(stack_network_id, stream)?;
             }
             Self::CraftRecipe {
                 recipe_network_id,
@@ -231,7 +231,7 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
                 number_of_requested_crafts,
                 repair_cost,
             } => {
-                <u32 as ProtoCodecVAR>::serialize(recipe_network_id, stream)?;
+                <i32 as ProtoCodecLE>::serialize(recipe_network_id, stream)?;
                 <i8 as ProtoCodec>::serialize(number_of_requested_crafts, stream)?;
                 <i32 as ProtoCodecVAR>::serialize(repair_cost, stream)?;
             }
@@ -308,7 +308,7 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
             9 => Self::ScreenHUDMineBlock {
                 hotbar_slot: <i32 as ProtoCodecVAR>::deserialize(stream)?,
                 predicted_durability: <i32 as ProtoCodecVAR>::deserialize(stream)?,
-                stack_network_id: <i32 as ProtoCodecVAR>::deserialize(stream)?,
+                stack_network_id: <i32 as ProtoCodecLE>::deserialize(stream)?,
             },
             10 => Self::CraftRecipe {
                 recipe_network_id: <u32 as ProtoCodecVAR>::deserialize(stream)?,
@@ -328,7 +328,7 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
                 filtered_strings_index: <i32 as ProtoCodecLE>::deserialize(stream)?,
             },
             14 => Self::CraftRepairAndDisenchant {
-                recipe_network_id: <u32 as ProtoCodecVAR>::deserialize(stream)?,
+                recipe_network_id: <i32 as ProtoCodecLE>::deserialize(stream)?,
                 number_of_requested_crafts: <i8 as ProtoCodec>::deserialize(stream)?,
                 repair_cost: <i32 as ProtoCodecVAR>::deserialize(stream)?,
             },
@@ -407,7 +407,7 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
                 } => {
                     <i32 as ProtoCodecVAR>::size_hint(hotbar_slot)
                         + <i32 as ProtoCodecVAR>::size_hint(predicted_durability)
-                        + <i32 as ProtoCodecVAR>::size_hint(stack_network_id)
+                        + <i32 as ProtoCodecLE>::size_hint(stack_network_id)
                 }
                 Self::CraftRecipe {
                     recipe_network_id,
@@ -444,7 +444,7 @@ impl<V: ProtoVersion> ProtoCodec for ItemStackRequestActionType<V> {
                     number_of_requested_crafts,
                     repair_cost,
                 } => {
-                    <u32 as ProtoCodecVAR>::size_hint(recipe_network_id)
+                    <i32 as ProtoCodecLE>::size_hint(recipe_network_id)
                         + <i8 as ProtoCodec>::size_hint(number_of_requested_crafts)
                         + <i32 as ProtoCodecVAR>::size_hint(repair_cost)
                 }
