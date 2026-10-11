@@ -3,8 +3,8 @@ pub mod shard;
 use super::error::ConnectionError;
 use super::transport::{Transport, TransportLayerConnection};
 use crate::codec::{
-    UnreadBytes, compress_packets, decode_packets, decompress_packets, decrypt_packets,
-    encode_packets, encrypt_packets,
+    MAX_BATCH_LEN, UnreadBytes, compress_packets, decode_packets, decompress_packets,
+    decrypt_packets, encode_packets, encrypt_packets,
 };
 use crate::compression::Compression;
 use crate::encryption::Encryption;
@@ -22,6 +22,7 @@ pub struct Connection<V: Packets, T = TransportLayerConnection> {
     /// login process, if encryption is enabled
     pub encryption: Option<Encryption>,
     pub unread_bytes: UnreadBytes,
+    pub max_batch_len: usize,
     _version_marker: PhantomData<V>,
 }
 
@@ -32,6 +33,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             compression: self.compression,
             encryption: self.encryption,
             unread_bytes: self.unread_bytes,
+            max_batch_len: self.max_batch_len,
             _version_marker: PhantomData,
         }
     }
@@ -42,6 +44,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             compression: None,
             encryption: None,
             unread_bytes: UnreadBytes::default(),
+            max_batch_len: MAX_BATCH_LEN,
             _version_marker: PhantomData,
         }
     }
@@ -84,7 +87,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             packet_stream,
             self.compression.as_ref(),
             self.encryption.as_mut(),
-            self.transport_layer.max_message_len(),
+            self.max_batch_len,
             self.unread_bytes,
         )?;
 
@@ -101,11 +104,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
     pub async fn recv_batch(&mut self) -> Result<Vec<u8>, ConnectionError> {
         let stream = self.transport_layer.recv().await?;
         let stream = decrypt_packets(stream, self.encryption.as_mut())?;
-        let stream = decompress_packets(
-            stream,
-            self.compression.as_ref(),
-            self.transport_layer.max_message_len(),
-        )?;
+        let stream = decompress_packets(stream, self.compression.as_ref(), self.max_batch_len)?;
 
         Ok(stream)
     }
@@ -152,5 +151,22 @@ mod tests {
         a.send(&batch).await.unwrap();
 
         assert_eq!(b.recv().await.unwrap().len(), 4000);
+    }
+
+    #[::tokio::test]
+    async fn decompressed_batches_are_bounded_by_the_batch_limit_not_the_transport() {
+        let (mut a, mut b) = memory_connections();
+        let zlib = Compression::Zlib {
+            threshold: 1,
+            compression_level: 6,
+        };
+        a.enable_compression(zlib.clone());
+        b.enable_compression(zlib);
+
+        a.send_batch(vec![0u8; 2 << 20]).await.unwrap();
+        assert_eq!(b.recv_batch().await.unwrap().len(), 2 << 20);
+
+        a.send_batch(vec![0u8; (10 << 20) + 1]).await.unwrap();
+        assert!(b.recv_batch().await.is_err());
     }
 }

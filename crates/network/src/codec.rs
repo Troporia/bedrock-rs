@@ -6,6 +6,7 @@ use bedrock_protocol_core::{PacketHeader, Packets, ProtoCodecVAR};
 use std::io::Cursor;
 
 pub const MAX_BATCH_PACKETS: usize = 4096;
+pub const MAX_BATCH_LEN: usize = 10 << 20;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum UnreadBytes {
