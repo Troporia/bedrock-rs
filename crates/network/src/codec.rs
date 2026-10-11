@@ -20,22 +20,36 @@ pub fn encode_packets<T: Packets>(
     compression: Option<&Compression>,
     encryption: Option<&mut Encryption>,
 ) -> Result<Vec<u8>, NetworkCodecError> {
+    encode_packets_with_header(packets, &PacketHeader::default(), compression, encryption)
+}
+
+/// Encodes `packets` with the sender and target sub-client ids of `header` on every frame.
+/// `header.packet_id` is ignored; each frame carries its own packet's id. Servers route an
+/// incoming packet by its sender sub-client id and clients by its target sub-client id.
+pub fn encode_packets_with_header<T: Packets>(
+    packets: &[T],
+    header: &PacketHeader,
+    compression: Option<&Compression>,
+    encryption: Option<&mut Encryption>,
+) -> Result<Vec<u8>, NetworkCodecError> {
     tracing::trace!("Encoding packets");
 
-    let mut packets_stream = batch_packets::<T>(packets)?;
+    let mut packets_stream = batch_packets::<T>(packets, header)?;
     packets_stream = compress_packets(packets_stream, compression)?;
     packets_stream = encrypt_packets(packets_stream, encryption)?;
 
     Ok(packets_stream)
 }
 
+/// Decodes a batch into its packets, each with the header it arrived under so the sender and
+/// target sub-client ids are kept.
 pub fn decode_packets<T: Packets>(
     mut packets_stream: Vec<u8>,
     compression: Option<&Compression>,
     encryption: Option<&mut Encryption>,
     max_batch_len: usize,
     unread_bytes: UnreadBytes,
-) -> Result<Vec<T>, NetworkCodecError> {
+) -> Result<Vec<(PacketHeader, T)>, NetworkCodecError> {
     tracing::trace!("Decoding packets");
 
     packets_stream = decrypt_packets(packets_stream, encryption)?;
@@ -45,14 +59,16 @@ pub fn decode_packets<T: Packets>(
     Ok(packets)
 }
 
-fn batch_packets<T: Packets>(packets: &[T]) -> Result<Vec<u8>, NetworkCodecError> {
+fn batch_packets<T: Packets>(
+    packets: &[T],
+    template: &PacketHeader,
+) -> Result<Vec<u8>, NetworkCodecError> {
     let frames = packets
         .iter()
         .map(|packet| {
             let header = PacketHeader {
                 packet_id: packet.id(),
-                sender_sub_client_id: 0,
-                target_sub_client_id: 0,
+                ..*template
             };
 
             let mut frame = Vec::with_capacity(packet.size_hint(&header));
@@ -67,17 +83,18 @@ fn batch_packets<T: Packets>(packets: &[T]) -> Result<Vec<u8>, NetworkCodecError
 fn separate_packets<T: Packets>(
     packets_stream: Vec<u8>,
     unread_bytes: UnreadBytes,
-) -> Result<Vec<T>, NetworkCodecError> {
+) -> Result<Vec<(PacketHeader, T)>, NetworkCodecError> {
     split_batch(&packets_stream)?
         .into_iter()
         .map(|frame| decode_packet(frame, unread_bytes))
         .collect()
 }
 
+/// Decodes one frame into its packet and the header it carried.
 pub fn decode_packet<T: Packets>(
     frame: &[u8],
     unread_bytes: UnreadBytes,
-) -> Result<T, NetworkCodecError> {
+) -> Result<(PacketHeader, T), NetworkCodecError> {
     let mut frame = Cursor::new(frame);
     let (packet, header) = T::deserialize(&mut frame)?;
 
@@ -92,7 +109,7 @@ pub fn decode_packet<T: Packets>(
         );
     }
 
-    Ok(packet)
+    Ok((header, packet))
 }
 
 pub fn split_batch(batch: &[u8]) -> Result<Vec<&[u8]>, NetworkCodecError> {
@@ -263,5 +280,72 @@ mod unread_tests {
                 ProtoCodecError::LeftOvers(1)
             ))
         ));
+    }
+}
+
+#[cfg(test)]
+mod header_tests {
+    use super::*;
+    use crate::login::packets::{LoginPackets, LoginStatus};
+    use bedrock_protocol::V2225;
+
+    fn split_screen_header() -> PacketHeader {
+        PacketHeader {
+            packet_id: 0,
+            sender_sub_client_id: 1,
+            target_sub_client_id: 2,
+        }
+    }
+
+    #[test]
+    fn sub_client_ids_survive_encode_then_decode() {
+        let packet = V2225::play_status(LoginStatus::LoginSuccess);
+        let batch =
+            encode_packets_with_header::<V2225>(&[packet], &split_screen_header(), None, None)
+                .unwrap();
+
+        let decoded =
+            decode_packets::<V2225>(batch, None, None, MAX_BATCH_LEN, UnreadBytes::Reject).unwrap();
+
+        assert_eq!(decoded.len(), 1);
+        let (header, _) = &decoded[0];
+        assert_eq!(header.sender_sub_client_id, 1);
+        assert_eq!(header.target_sub_client_id, 2);
+        assert_eq!(header.packet_id, 2);
+    }
+
+    #[test]
+    fn every_frame_in_a_batch_carries_the_chosen_ids() {
+        let packets = vec![V2225::play_status(LoginStatus::LoginSuccess); 3];
+        let batch =
+            encode_packets_with_header::<V2225>(&packets, &split_screen_header(), None, None)
+                .unwrap();
+
+        let decoded =
+            decode_packets::<V2225>(batch, None, None, MAX_BATCH_LEN, UnreadBytes::Reject).unwrap();
+
+        assert!(decoded.iter().all(
+            |(header, _)| header.sender_sub_client_id == 1 && header.target_sub_client_id == 2
+        ));
+    }
+
+    #[test]
+    fn default_encoding_keeps_the_zero_sub_client_bytes() {
+        let packet = V2225::play_status(LoginStatus::LoginSuccess);
+
+        let batch = encode_packets::<V2225>(&[packet], None, None).unwrap();
+
+        assert_eq!(batch, [5, 2, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn chosen_ids_change_only_the_header_bytes() {
+        let packet = V2225::play_status(LoginStatus::LoginSuccess);
+
+        let batch =
+            encode_packets_with_header::<V2225>(&[packet], &split_screen_header(), None, None)
+                .unwrap();
+
+        assert_eq!(batch, [6, 0x82, 0x48, 0, 0, 0, 0]);
     }
 }

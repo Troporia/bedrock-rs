@@ -2,7 +2,7 @@ use crate::error::ProtoCodecError;
 use crate::{ProtoCodec, ProtoCodecVAR};
 use std::io::{Read, Write};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PacketHeader {
     pub packet_id: u16,
     pub sender_sub_client_id: u8,

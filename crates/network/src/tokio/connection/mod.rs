@@ -4,11 +4,11 @@ use super::error::ConnectionError;
 use super::transport::{Transport, TransportLayerConnection};
 use crate::codec::{
     MAX_BATCH_LEN, UnreadBytes, compress_packets, decode_packets, decompress_packets,
-    decrypt_packets, encode_packets, encrypt_packets,
+    decrypt_packets, encode_packets_with_header, encrypt_packets,
 };
 use crate::compression::Compression;
 use crate::encryption::Encryption;
-use bedrock_protocol_core::Packets;
+use bedrock_protocol_core::{PacketHeader, Packets};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 
@@ -66,8 +66,24 @@ impl<V: Packets, T: Transport> Connection<V, T> {
     }
 
     pub async fn send(&mut self, packets: &[V]) -> Result<(), ConnectionError> {
-        let packets_stream =
-            encode_packets::<V>(packets, self.compression.as_ref(), self.encryption.as_mut())?;
+        self.send_with_header(packets, &PacketHeader::default())
+            .await
+    }
+
+    /// Sends `packets` with the sender and target sub-client ids of `header` on every frame;
+    /// `header.packet_id` is ignored. A server routes a received packet by its sender
+    /// sub-client id and a client by its target sub-client id.
+    pub async fn send_with_header(
+        &mut self,
+        packets: &[V],
+        header: &PacketHeader,
+    ) -> Result<(), ConnectionError> {
+        let packets_stream = encode_packets_with_header::<V>(
+            packets,
+            header,
+            self.compression.as_ref(),
+            self.encryption.as_mut(),
+        )?;
 
         self.transport_layer.send(&packets_stream).await?;
 
@@ -81,6 +97,17 @@ impl<V: Packets, T: Transport> Connection<V, T> {
     }
 
     pub async fn recv(&mut self) -> Result<Vec<V>, ConnectionError> {
+        Ok(self
+            .recv_with_headers()
+            .await?
+            .into_iter()
+            .map(|(_, packet)| packet)
+            .collect())
+    }
+
+    /// Receives one batch with each packet's header, exposing its sender and target
+    /// sub-client ids.
+    pub async fn recv_with_headers(&mut self) -> Result<Vec<(PacketHeader, V)>, ConnectionError> {
         let packet_stream = self.transport_layer.recv().await?;
 
         let packets = decode_packets::<V>(
@@ -151,6 +178,24 @@ mod tests {
         a.send(&batch).await.unwrap();
 
         assert_eq!(b.recv().await.unwrap().len(), 4000);
+    }
+
+    #[::tokio::test]
+    async fn sub_client_ids_cross_the_connection() {
+        let (mut a, mut b) = memory_connections();
+        let header = PacketHeader {
+            packet_id: 0,
+            sender_sub_client_id: 3,
+            target_sub_client_id: 1,
+        };
+
+        a.send_with_header(&[V2225::play_status(LoginStatus::LoginSuccess)], &header)
+            .await
+            .unwrap();
+
+        let received = b.recv_with_headers().await.unwrap();
+        assert_eq!(received[0].0.sender_sub_client_id, 3);
+        assert_eq!(received[0].0.target_sub_client_id, 1);
     }
 
     #[::tokio::test]
