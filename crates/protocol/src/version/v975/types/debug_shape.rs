@@ -11,7 +11,7 @@ pub struct DebugShape<V: ProtoVersion> {
     #[endianness(le)]
     pub scale: Option<f32>,
     #[endianness(le)]
-    pub rotation: Option<(f32, f32)>,
+    pub rotation: Option<(f32, f32, f32)>,
     #[endianness(le)]
     pub remaining_duration: Option<f32>,
     #[endianness(le)]
@@ -52,7 +52,7 @@ pub enum DebugShapeData {
         arrow_head_segments: Option<i8>,
     } = 1,
     Text {
-        text: Option<String>,
+        text: String,
         use_rotation: bool,
         #[endianness(le)]
         background_color: Option<i32>,
@@ -62,13 +62,13 @@ pub enum DebugShapeData {
     } = 2,
     Box {
         #[endianness(le)]
-        box_bounds: Option<(f32, f32, f32)>,
+        box_bounds: (f32, f32, f32),
     } = 3,
     Line {
         #[endianness(le)]
-        line_end_position: Option<(f32, f32, f32)>,
+        line_end_position: (f32, f32, f32),
     } = 4,
     Sphere {
-        segments: Option<i8>,
+        segments: u8,
     } = 5,
 }
