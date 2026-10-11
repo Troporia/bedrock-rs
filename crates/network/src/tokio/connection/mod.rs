@@ -3,14 +3,24 @@ pub mod shard;
 use super::error::ConnectionError;
 use super::transport::{Transport, TransportLayerConnection};
 use crate::codec::{
-    MAX_BATCH_LEN, UnreadBytes, compress_packets, decode_packets, decompress_packets,
-    decrypt_packets, encode_packets_with_header, encrypt_packets,
+    DecodedPackets, MAX_BATCH_LEN, UnreadBytes, compress_packets, decode_packets_each,
+    decompress_packets, decrypt_packets, encode_packets_with_header, encrypt_packets,
 };
 use crate::compression::Compression;
 use crate::encryption::Encryption;
 use bedrock_protocol_core::{PacketHeader, Packets};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
+
+/// What `recv` and `recv_with_headers` do with a packet that fails to decode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BadPacketPolicy {
+    /// The whole batch fails with the packet's error.
+    #[default]
+    Fail,
+    /// The packet is dropped with a warning and the rest of the batch is delivered.
+    Skip,
+}
 
 pub struct Connection<V: Packets, T = TransportLayerConnection> {
     /// Represents the Connection's internal transport layer, which may vary
@@ -22,6 +32,7 @@ pub struct Connection<V: Packets, T = TransportLayerConnection> {
     /// login process, if encryption is enabled
     pub encryption: Option<Encryption>,
     pub unread_bytes: UnreadBytes,
+    pub bad_packets: BadPacketPolicy,
     pub max_batch_len: usize,
     _version_marker: PhantomData<V>,
 }
@@ -33,6 +44,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             compression: self.compression,
             encryption: self.encryption,
             unread_bytes: self.unread_bytes,
+            bad_packets: self.bad_packets,
             max_batch_len: self.max_batch_len,
             _version_marker: PhantomData,
         }
@@ -44,6 +56,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
             compression: None,
             encryption: None,
             unread_bytes: UnreadBytes::default(),
+            bad_packets: BadPacketPolicy::default(),
             max_batch_len: MAX_BATCH_LEN,
             _version_marker: PhantomData,
         }
@@ -106,19 +119,39 @@ impl<V: Packets, T: Transport> Connection<V, T> {
     }
 
     /// Receives one batch with each packet's header, exposing its sender and target
-    /// sub-client ids.
+    /// sub-client ids. A packet that fails to decode is handled per `bad_packets`.
     pub async fn recv_with_headers(&mut self) -> Result<Vec<(PacketHeader, V)>, ConnectionError> {
+        let decoded = self.recv_each().await?;
+        let mut packets = Vec::with_capacity(decoded.len());
+
+        for (header, result) in decoded {
+            match result {
+                Ok(packet) => packets.push((header, packet)),
+                Err(error) if self.bad_packets == BadPacketPolicy::Skip => {
+                    tracing::warn!(
+                        "dropping packet {} that failed to decode: {error}",
+                        header.packet_id,
+                    );
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        Ok(packets)
+    }
+
+    /// Receives one batch and returns the outcome of every packet in order, regardless of
+    /// `bad_packets`. Only a failure of the batch itself is an error.
+    pub async fn recv_each(&mut self) -> Result<DecodedPackets<V>, ConnectionError> {
         let packet_stream = self.transport_layer.recv().await?;
 
-        let packets = decode_packets::<V>(
+        Ok(decode_packets_each::<V>(
             packet_stream,
             self.compression.as_ref(),
             self.encryption.as_mut(),
             self.max_batch_len,
             self.unread_bytes,
-        )?;
-
-        Ok(packets)
+        )?)
     }
 
     pub async fn recv_raw(&mut self) -> Result<Vec<u8>, ConnectionError> {
@@ -158,6 +191,7 @@ impl<V: Packets, T: Transport> Connection<V, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codec::{encode_packets, join_batch, split_batch};
     use crate::login::{LoginPackets, LoginStatus};
     use crate::tokio::memory::memory_connections;
     use bedrock_protocol::V2225;
@@ -213,5 +247,61 @@ mod tests {
 
         a.send_batch(vec![0u8; (10 << 20) + 1]).await.unwrap();
         assert!(b.recv_batch().await.is_err());
+    }
+
+    fn batch_with_a_bad_packet_at(position: usize) -> Vec<u8> {
+        let good =
+            encode_packets::<V2225>(&[V2225::play_status(LoginStatus::LoginSuccess)], None, None)
+                .unwrap();
+        let good = split_batch(&good).unwrap()[0].to_vec();
+        let mut frames = vec![good.clone(), good.clone(), good];
+        frames[position] = vec![2, 1];
+        join_batch(&frames)
+    }
+
+    #[::tokio::test]
+    async fn a_bad_packet_fails_the_batch_by_default() {
+        for position in 0..3 {
+            let (mut a, mut b) = memory_connections();
+            a.send_batch(batch_with_a_bad_packet_at(position))
+                .await
+                .unwrap();
+
+            assert!(b.recv().await.is_err(), "bad packet at {position}");
+        }
+    }
+
+    #[::tokio::test]
+    async fn skip_delivers_the_good_packets_around_a_bad_one() {
+        for position in 0..3 {
+            let (mut a, mut b) = memory_connections();
+            b.bad_packets = BadPacketPolicy::Skip;
+            a.send_batch(batch_with_a_bad_packet_at(position))
+                .await
+                .unwrap();
+
+            assert_eq!(b.recv().await.unwrap().len(), 2, "bad packet at {position}");
+        }
+    }
+
+    #[::tokio::test]
+    async fn recv_each_reports_every_packet_in_order() {
+        for position in 0..3 {
+            let (mut a, mut b) = memory_connections();
+            a.send_batch(batch_with_a_bad_packet_at(position))
+                .await
+                .unwrap();
+
+            let outcomes: Vec<bool> = b
+                .recv_each()
+                .await
+                .unwrap()
+                .iter()
+                .map(|(_, result)| result.is_ok())
+                .collect();
+
+            let expected: Vec<bool> = (0..3).map(|index| index != position).collect();
+            assert_eq!(outcomes, expected);
+        }
     }
 }

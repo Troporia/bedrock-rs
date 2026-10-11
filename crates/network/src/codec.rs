@@ -2,7 +2,7 @@ use crate::compression::Compression;
 use crate::encryption::Encryption;
 use crate::error::NetworkCodecError;
 use bedrock_protocol_core::error::ProtoCodecError;
-use bedrock_protocol_core::{PacketHeader, Packets, ProtoCodecVAR};
+use bedrock_protocol_core::{PacketHeader, Packets, ProtoCodec, ProtoCodecVAR};
 use std::io::Cursor;
 
 pub const MAX_BATCH_PACKETS: usize = 4096;
@@ -57,6 +57,36 @@ pub fn decode_packets<T: Packets>(
     let packets = separate_packets::<T>(packets_stream, unread_bytes)?;
 
     Ok(packets)
+}
+
+pub type DecodedPackets<T> = Vec<(PacketHeader, Result<T, NetworkCodecError>)>;
+
+/// Decodes every frame of a batch independently, so one undecodable packet does not hide the
+/// others. A frame whose header cannot be read reports the default header. The outer error is a
+/// failure of the batch itself: decryption, decompression or framing.
+pub fn decode_packets_each<T: Packets>(
+    mut packets_stream: Vec<u8>,
+    compression: Option<&Compression>,
+    encryption: Option<&mut Encryption>,
+    max_batch_len: usize,
+    unread_bytes: UnreadBytes,
+) -> Result<DecodedPackets<T>, NetworkCodecError> {
+    tracing::trace!("Decoding packets one by one");
+
+    packets_stream = decrypt_packets(packets_stream, encryption)?;
+    packets_stream = decompress_packets(packets_stream, compression, max_batch_len)?;
+
+    Ok(split_batch(&packets_stream)?
+        .into_iter()
+        .map(|frame| match decode_packet::<T>(frame, unread_bytes) {
+            Ok((header, packet)) => (header, Ok(packet)),
+            Err(error) => (frame_header(frame), Err(error)),
+        })
+        .collect())
+}
+
+fn frame_header(frame: &[u8]) -> PacketHeader {
+    <PacketHeader as ProtoCodec>::deserialize(&mut Cursor::new(frame)).unwrap_or_default()
 }
 
 fn batch_packets<T: Packets>(
@@ -347,5 +377,89 @@ mod header_tests {
                 .unwrap();
 
         assert_eq!(batch, [6, 0x82, 0x48, 0, 0, 0, 0]);
+    }
+}
+
+#[cfg(test)]
+mod each_tests {
+    use super::*;
+    use crate::login::packets::{LoginPackets, LoginStatus};
+    use bedrock_protocol::V2225;
+
+    const GARBAGE: [u8; 2] = [2, 1];
+
+    fn good_frame() -> Vec<u8> {
+        let batch =
+            encode_packets::<V2225>(&[V2225::play_status(LoginStatus::LoginSuccess)], None, None)
+                .unwrap();
+        split_batch(&batch).unwrap()[0].to_vec()
+    }
+
+    fn decode_each(frames: &[Vec<u8>]) -> Vec<(PacketHeader, Result<V2225, NetworkCodecError>)> {
+        decode_packets_each::<V2225>(
+            join_batch(frames),
+            None,
+            None,
+            MAX_BATCH_LEN,
+            UnreadBytes::Reject,
+        )
+        .unwrap()
+    }
+
+    fn outcomes(frames: &[Vec<u8>]) -> Vec<bool> {
+        decode_each(frames)
+            .iter()
+            .map(|(_, result)| result.is_ok())
+            .collect()
+    }
+
+    #[test]
+    fn a_bad_middle_frame_leaves_its_neighbours_decoded() {
+        let frames = [good_frame(), GARBAGE.to_vec(), good_frame()];
+
+        assert_eq!(outcomes(&frames), [true, false, true]);
+    }
+
+    #[test]
+    fn a_bad_first_frame_leaves_the_rest_decoded() {
+        let frames = [GARBAGE.to_vec(), good_frame(), good_frame()];
+
+        assert_eq!(outcomes(&frames), [false, true, true]);
+    }
+
+    #[test]
+    fn a_bad_last_frame_leaves_the_rest_decoded() {
+        let frames = [good_frame(), good_frame(), GARBAGE.to_vec()];
+
+        assert_eq!(outcomes(&frames), [true, true, false]);
+    }
+
+    #[test]
+    fn a_bad_frame_keeps_its_header() {
+        let decoded = decode_each(&[GARBAGE.to_vec()]);
+
+        assert_eq!(decoded[0].0.packet_id, 2);
+    }
+
+    #[test]
+    fn unread_bytes_fail_only_their_own_frame_when_rejecting() {
+        let mut trailing = good_frame();
+        trailing.push(0);
+
+        assert_eq!(outcomes(&[good_frame(), trailing]), [true, false]);
+    }
+
+    #[test]
+    fn framing_errors_still_fail_the_whole_batch() {
+        assert!(matches!(
+            decode_packets_each::<V2225>(
+                vec![5, 1, 2],
+                None,
+                None,
+                MAX_BATCH_LEN,
+                UnreadBytes::Warn
+            ),
+            Err(NetworkCodecError::PacketLengthOutOfBounds { .. })
+        ));
     }
 }

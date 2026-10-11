@@ -7,7 +7,7 @@ pub mod session;
 pub mod transport;
 
 pub use client::Client;
-pub use connection::Connection;
+pub use connection::{BadPacketPolicy, Connection};
 pub use listener::{Listener, ListenerBuilder};
 pub use session::Session;
 
