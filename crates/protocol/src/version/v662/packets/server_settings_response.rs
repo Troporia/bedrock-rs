@@ -7,5 +7,3 @@ pub struct ServerSettingsResponsePacket {
     pub form_id: u32,
     pub form_ui_json: String,
 }
-
-// TODO: this doesn't seem right. Probably an error in the proto docs. Check gopher or cloudburst
