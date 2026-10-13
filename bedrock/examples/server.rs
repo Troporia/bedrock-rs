@@ -1,13 +1,10 @@
 use bedrock::auth::Login;
 use bedrock::core::world::dimension::Dimension;
 use bedrock::network::compression::Compression;
-use bedrock::network::login::{
-    LoginOptions, NetworkSettings, begin_encryption, bind_transport_identity, check_protocol,
-};
+use bedrock::network::login::{LoginOptions, NetworkSettings, begin_encryption, check_protocol};
 use bedrock::network::tokio::Connection;
 use bedrock::network::tokio::Listener;
 use bedrock::network::tokio::error::ConnectionError;
-use bedrock::network::tokio::transport::Transport;
 use bedrock::protocol::v662::enums::PacketCompressionAlgorithm;
 use bedrock::protocol::v662::enums::{
     ChatRestrictionLevel, Difficulty, EditorWorldType, GamePublishSetting, GameType, GeneratorType,
@@ -91,11 +88,8 @@ async fn login(
         return Err("expected a login".into());
     };
     check_protocol(packet.client_network_version, PROTOCOL)?;
-    let login = options.verify(&packet.connection_request)?;
-    if let Some(key) = conn.get_transport_conn().login_key() {
-        bind_transport_identity(&login, &key)?;
-    }
 
+    let login = options.verify(&packet.connection_request)?;
     let (token, encryption) = begin_encryption(&login)?;
     conn.send(&[Protocol::ServerToClientHandshakePacket(Box::new(
         ServerToClientHandshakePacket {

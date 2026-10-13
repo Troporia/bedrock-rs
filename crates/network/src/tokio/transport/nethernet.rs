@@ -86,9 +86,4 @@ impl NetherNetConnection {
     pub fn player(&self) -> Option<&PlayerInfo> {
         self.player.as_deref()
     }
-
-    pub fn login_key(&self) -> Option<p384::PublicKey> {
-        let key = self.player.as_ref()?.client_public_key().ok()?;
-        Some(p384::PublicKey::from(&key))
-    }
 }

@@ -3,7 +3,6 @@ use bedrock_auth::{
     AsyncHttpClient, AuthData, AuthOIDC, Authentication, ChainRoot, ConnectionRequest, HttpClient,
     Login,
 };
-use p384::PublicKey;
 use std::sync::Arc;
 
 /// How a server verifies the connection request of a login packet.
@@ -127,15 +126,6 @@ impl LoginOptions {
     }
 }
 
-/// Requires the login to carry the identity key the transport already authenticated.
-pub fn bind_transport_identity(login: &Login, transport_key: &PublicKey) -> Result<(), LoginError> {
-    if login.authentication.identity().public_key()? == *transport_key {
-        Ok(())
-    } else {
-        Err(LoginError::TransportIdentityMismatch)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,8 +135,6 @@ mod tests {
         self_signed_login, trusted_oidc, verified_guest_login, verified_online_login,
     };
     use bedrock_auth::{AuthError, ClientData};
-    use p384::SecretKey;
-    use p384::elliptic_curve::common::Generate;
 
     fn offline() -> LoginOptions {
         LoginOptions::default().require_authentication(false)
@@ -284,24 +272,6 @@ mod tests {
 
         assert!(is_unknown_key_id(result));
         assert_eq!(http.requests(), ["https://jwks.invalid"]);
-    }
-
-    #[test]
-    fn a_login_from_another_key_than_the_transport_identity_is_refused() {
-        let login = offline().verify(&self_signed_login("Steve")).unwrap();
-        let other = SecretKey::generate_from_rng(&mut rand::rng()).public_key();
-
-        assert!(matches!(
-            bind_transport_identity(&login, &other),
-            Err(LoginError::TransportIdentityMismatch)
-        ));
-    }
-
-    #[test]
-    fn a_login_carrying_the_transport_identity_key_is_accepted() {
-        let login = offline().verify(&self_signed_login("Steve")).unwrap();
-
-        bind_transport_identity(&login, &client_key().public_key()).unwrap();
     }
 
     #[test]

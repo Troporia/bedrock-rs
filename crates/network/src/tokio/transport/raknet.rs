@@ -72,8 +72,4 @@ impl RakNetConnection {
     pub async fn is_closed(&self) -> bool {
         self.session.is_closed().await
     }
-
-    pub fn login_key(&self) -> Option<p384::PublicKey> {
-        None
-    }
 }

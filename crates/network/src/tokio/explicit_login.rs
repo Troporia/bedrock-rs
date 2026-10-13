@@ -1,11 +1,8 @@
-use super::memory::{MemoryConnection, memory_connections, memory_connections_bound_to};
-use super::transport::Transport;
+use super::memory::{MemoryConnection, memory_connections};
 use crate::codec::encode_packets;
 use crate::compression::Compression;
-use crate::error::LoginError;
 use crate::login::{
-    ClientIdentity, LoginOptions, NetworkSettings, begin_encryption, bind_transport_identity,
-    check_protocol,
+    ClientIdentity, LoginOptions, NetworkSettings, begin_encryption, check_protocol,
 };
 use crate::test_helpers::{identity_key, self_signed_request_bytes};
 use bedrock_auth::Login;
@@ -58,11 +55,8 @@ async fn serve(mut conn: MemoryConnection) -> Login {
         panic!("the login follows the network settings");
     };
     check_protocol(packet.client_network_version, PROTOCOL).unwrap();
-    let login = options.verify(&packet.connection_request).unwrap();
-    if let Some(key) = conn.get_transport_conn().login_key() {
-        bind_transport_identity(&login, &key).unwrap();
-    }
 
+    let login = options.verify(&packet.connection_request).unwrap();
     let (token, encryption) = begin_encryption(&login).unwrap();
     conn.send(&[V2225::ServerToClientHandshakePacket(Box::new(
         ServerToClientHandshakePacket {
@@ -155,21 +149,4 @@ async fn client_and_server_log_in_explicitly_and_exchange_an_encrypted_compresse
             .unwrap();
     assert_ne!(on_the_wire, plain);
     assert!(on_the_wire.len() < plain.len());
-}
-
-#[test]
-fn a_transport_bound_to_another_key_fails_the_binding_check() {
-    let other = ClientIdentity::generate_key().public_key();
-    let (conn, _client) = memory_connections_bound_to(other);
-    let login = LoginOptions::default()
-        .require_authentication(false)
-        .verify(&self_signed_request_bytes())
-        .unwrap();
-
-    let key = conn.get_transport_conn().login_key().unwrap();
-
-    assert!(matches!(
-        bind_transport_identity(&login, &key),
-        Err(LoginError::TransportIdentityMismatch)
-    ));
 }

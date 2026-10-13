@@ -10,5 +10,5 @@ pub mod settings;
 
 pub use client::ClientIdentity;
 pub use handshake::{begin_encryption, client_finish_encryption, server_begin_encryption};
-pub use server::{LoginOptions, bind_transport_identity};
+pub use server::LoginOptions;
 pub use settings::{NetworkSettings, check_protocol};
