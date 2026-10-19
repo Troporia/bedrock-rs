@@ -1,9 +1,16 @@
 use crate::error::CompressionError;
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use flate2::Compression as CompressionLevel;
-use flate2::{read::DeflateDecoder, write::DeflateEncoder};
-use std::io::{Cursor, Read, Write};
+use flate2::{Compress, Decompress, FlushCompress, FlushDecompress, Status};
+use std::cell::RefCell;
+use std::io::{Cursor, Write};
 use std::mem::size_of;
+
+thread_local! {
+    static INFLATE: RefCell<Decompress> = RefCell::new(Decompress::new(false));
+    static DEFLATE: RefCell<Option<(u32, Compress)>> = const { RefCell::new(None) };
+    static SNAPPY: RefCell<snap::raw::Encoder> = RefCell::new(snap::raw::Encoder::new());
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Compression {
@@ -93,22 +100,17 @@ impl Compression {
             } => {
                 dst.write_u8(Self::ID_ZLIB)?;
 
-                let mut encoder =
-                    DeflateEncoder::new(dst, CompressionLevel::new(*compression_level as u32));
-
-                encoder
-                    .write_all(src.as_slice())
-                    .map_err(CompressionError::ZlibError)?;
-
-                encoder.finish().map_err(CompressionError::ZlibError)?
+                Self::deflate(&src, *compression_level as u32, dst)?
             }
             Compression::Snappy { .. } => {
                 dst.write_u8(Self::ID_SNAPPY)?;
 
-                let compressed = snap::raw::Encoder::new()
-                    .compress_vec(src.as_slice())
+                let start = dst.len();
+                dst.resize(start + snap::raw::max_compress_len(src.len()), 0);
+                let written = SNAPPY
+                    .with_borrow_mut(|encoder| encoder.compress(&src, &mut dst[start..]))
                     .map_err(|err| CompressionError::SnappyError(err.into()))?;
-                dst.extend_from_slice(&compressed);
+                dst.truncate(start + written);
 
                 dst
             }
@@ -145,9 +147,7 @@ impl Compression {
         }
 
         let dst = match compression_method {
-            Self::ID_ZLIB => {
-                Self::read_limited(DeflateDecoder::new(src.as_slice()), src.len(), max_len)?
-            }
+            Self::ID_ZLIB => Self::inflate_limited(&src, max_len)?,
             Self::ID_SNAPPY => Self::decompress_snappy(&src, max_len)?,
             Self::ID_NONE => src,
             other => return Err(CompressionError::UnknownCompressionMethod(other)),
@@ -167,19 +167,55 @@ impl Compression {
             .map_err(|err| CompressionError::SnappyError(err.into()))
     }
 
-    fn read_limited(
-        decoder: impl Read,
-        compressed_len: usize,
-        max_len: usize,
-    ) -> Result<Vec<u8>, CompressionError> {
-        let mut dst = Vec::with_capacity(compressed_len.min(max_len));
-        decoder
-            .take((max_len as u64).saturating_add(1))
-            .read_to_end(&mut dst)?;
-        if dst.len() > max_len {
-            return Err(CompressionError::DecompressedSizeExceeded(max_len));
-        }
-        Ok(dst)
+    fn deflate(src: &[u8], level: u32, mut dst: Vec<u8>) -> Result<Vec<u8>, CompressionError> {
+        DEFLATE.with_borrow_mut(|slot| {
+            match slot {
+                Some((current, compress)) if *current == level => compress.reset(),
+                _ => *slot = Some((level, Compress::new(CompressionLevel::new(level), false))),
+            }
+            let (_, compress) = slot.as_mut().expect("the compressor was just set");
+            loop {
+                let consumed = compress.total_in() as usize;
+                let status = compress
+                    .compress_vec(&src[consumed..], &mut dst, FlushCompress::Finish)
+                    .map_err(|err| CompressionError::ZlibError(err.into()))?;
+                if status == Status::StreamEnd {
+                    return Ok(dst);
+                }
+                dst.reserve(dst.capacity().max(64));
+            }
+        })
+    }
+
+    fn inflate_limited(src: &[u8], max_len: usize) -> Result<Vec<u8>, CompressionError> {
+        INFLATE.with_borrow_mut(|inflate| {
+            inflate.reset(false);
+            let mut dst = Vec::with_capacity(src.len().min(max_len));
+            loop {
+                let (in_before, out_before) = (inflate.total_in(), inflate.total_out());
+                let status = inflate
+                    .decompress_vec(&src[in_before as usize..], &mut dst, FlushDecompress::None)
+                    .map_err(|err| CompressionError::ZlibError(err.into()))?;
+                if dst.len() > max_len {
+                    return Err(CompressionError::DecompressedSizeExceeded(max_len));
+                }
+                if status == Status::StreamEnd {
+                    return Ok(dst);
+                }
+                let progressed =
+                    inflate.total_in() != in_before || inflate.total_out() != out_before;
+                if dst.len() == dst.capacity() {
+                    dst.reserve(
+                        dst.capacity()
+                            .clamp(1, max_len.saturating_add(1) - dst.len()),
+                    );
+                } else if !progressed {
+                    return Err(CompressionError::ZlibError(
+                        std::io::ErrorKind::UnexpectedEof.into(),
+                    ));
+                }
+            }
+        })
     }
 }
 
@@ -232,6 +268,103 @@ mod tests {
         let batch = vec![7u8; MAX_LEN];
         let compressed = zlib().compress(batch.clone()).unwrap();
         assert_eq!(zlib().decompress(compressed, MAX_LEN).unwrap(), batch);
+    }
+
+    #[test]
+    fn zlib_decoder_state_does_not_leak_between_batches() {
+        let sizes = [10, 100_000, 3, 70_000, 1, 4096];
+        for (round, size) in sizes.into_iter().enumerate() {
+            let batch: Vec<u8> = (0..size).map(|i| (i * 31 + round) as u8).collect();
+            let compressed = zlib().compress(batch.clone()).unwrap();
+            assert_eq!(
+                zlib().decompress(compressed, usize::MAX).unwrap(),
+                batch,
+                "size {size}"
+            );
+        }
+    }
+
+    #[test]
+    fn zlib_truncated_batch_is_an_error_and_the_next_batch_still_decodes() {
+        let batch = vec![9u8; 5000];
+        let compressed = zlib().compress(batch.clone()).unwrap();
+        let truncated = compressed[..compressed.len() - 3].to_vec();
+        assert!(matches!(
+            zlib().decompress(truncated, usize::MAX),
+            Err(CompressionError::ZlibError(_))
+        ));
+        assert_eq!(zlib().decompress(compressed, usize::MAX).unwrap(), batch);
+    }
+
+    #[test]
+    fn zlib_corrupt_batch_is_an_error_and_the_next_batch_still_decodes() {
+        let batch = b"bedrock batch bedrock batch bedrock batch".to_vec();
+        let compressed = zlib().compress(batch.clone()).unwrap();
+        let mut corrupt = vec![0u8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        corrupt.extend_from_slice(&compressed[1..]);
+        assert!(zlib().decompress(corrupt, usize::MAX).is_err());
+        assert_eq!(zlib().decompress(compressed, usize::MAX).unwrap(), batch);
+    }
+
+    #[test]
+    fn zlib_limit_is_enforced_after_the_buffer_has_grown() {
+        let bomb = zlib().compress(vec![0u8; 1 << 20]).unwrap();
+        assert!(matches!(
+            zlib().decompress(bomb, 5000),
+            Err(CompressionError::DecompressedSizeExceeded(5000))
+        ));
+    }
+
+    #[test]
+    fn zlib_encoder_state_does_not_leak_between_batches() {
+        for (round, size) in [10usize, 100_000, 3, 70_000, 1, 4096, 300_000]
+            .into_iter()
+            .enumerate()
+        {
+            let batch: Vec<u8> = (0..size).map(|i| (i * 31 + round) as u8).collect();
+            let compressed = zlib().compress(batch.clone()).unwrap();
+            assert_eq!(compressed[0], 0);
+            assert_eq!(
+                zlib().decompress(compressed, usize::MAX).unwrap(),
+                batch,
+                "size {size}"
+            );
+        }
+    }
+
+    #[test]
+    fn zlib_encoder_follows_a_level_change_on_the_same_thread() {
+        let batch = vec![3u8; 50_000];
+        for level in [9u8, 1, 6, 9] {
+            let compression = Compression::Zlib {
+                threshold: 0,
+                compression_level: level,
+            };
+            let compressed = compression.compress(batch.clone()).unwrap();
+            assert_eq!(
+                compression.decompress(compressed, usize::MAX).unwrap(),
+                batch,
+                "level {level}"
+            );
+        }
+    }
+
+    #[test]
+    fn snappy_encoder_state_does_not_leak_between_batches() {
+        let snappy = Compression::Snappy { threshold: 0 };
+        for (round, size) in [10usize, 100_000, 3, 70_000, 1, 4096]
+            .into_iter()
+            .enumerate()
+        {
+            let batch: Vec<u8> = (0..size).map(|i| ((i / 3) * 31 + round) as u8).collect();
+            let compressed = snappy.compress(batch.clone()).unwrap();
+            assert_eq!(compressed[0], 1);
+            assert_eq!(
+                snappy.decompress(compressed, usize::MAX).unwrap(),
+                batch,
+                "size {size}"
+            );
+        }
     }
 
     #[test]
