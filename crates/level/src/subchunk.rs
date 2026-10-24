@@ -41,30 +41,14 @@ impl TryFrom<u8> for SubChunkVersion {
     }
 }
 
-#[derive(Facet)]
-pub struct BlockVersionProxy(Option<i32>);
-
-impl From<BlockVersionProxy> for Option<[u8; 4]> {
-    fn from(value: BlockVersionProxy) -> Self {
-        value.0.map(i32::to_be_bytes)
-    }
-}
-
-impl From<&Option<[u8; 4]>> for BlockVersionProxy {
-    fn from(value: &Option<[u8; 4]>) -> Self {
-        BlockVersionProxy(value.map(i32::from_be_bytes))
-    }
-}
-
 /// Definition of block in the sub chunk block palette.
 #[derive(Facet, Debug, Clone, PartialEq)]
 pub struct BlockDef {
     /// Name of the block.
     pub name: String,
-    /// Version of the block.
+    /// Version of the block state format, packed as `major << 24 | minor << 16 | patch << 8 | revision`.
     #[facet(default)]
-    #[facet(proxy = BlockVersionProxy)]
-    pub version: Option<[u8; 4]>,
+    pub version: Option<i32>,
     /// Block-specific properties.
     #[facet(default)]
     pub states: HashMap<String, nbtx::Value>,
@@ -222,11 +206,7 @@ impl Layer {
         Cursor<R>: Read,
     {
         let array = match BitArray::from_disk::<M, _>(reader)? {
-            IndicesType::Empty => {
-                return Err(Error::Invalid(
-                    "found empty bit array while deserializing chunk, expected data",
-                ));
-            }
+            IndicesType::Empty => BitArray::zeroed::<M>(),
             IndicesType::Inherit => {
                 return Err(Error::Invalid(
                     "chunks do not support inheriting bit arrays",

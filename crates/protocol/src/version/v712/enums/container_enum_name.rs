@@ -68,4 +68,6 @@ pub enum ContainerEnumName {
     SmithingTableTemplateContainer = 61,
     CrafterLevelEntityContainer = 62,
     DynamicContainer = 63,
+    #[enum_fallback]
+    Unknown(i8),
 }

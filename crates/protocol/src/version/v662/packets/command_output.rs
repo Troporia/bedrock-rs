@@ -6,7 +6,7 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use std::io::{Cursor, Read, Write, copy};
 use std::mem::size_of;
 
-#[packet(id = 79)]
+#[packet(id = 79, direction = "server_to_client")]
 #[derive(Clone, Debug)]
 pub struct CommandOutputPacket<V: ProtoVersion> {
     pub origin_data: V::CommandOriginData,
@@ -51,7 +51,7 @@ impl<V: ProtoVersion> ProtoCodec for CommandOutputPacket<V> {
         let success_count = <u32 as ProtoCodecVAR>::deserialize(stream)?;
         let output_messages = {
             let len = <u32 as ProtoCodecVAR>::deserialize(stream)?;
-            let mut vec = Vec::with_capacity(len.try_into()?);
+            let mut vec = Vec::new();
             for _ in 0..len {
                 vec.push(<OutputMessagesEntry as ProtoCodec>::deserialize(stream)?);
             }

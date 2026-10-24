@@ -270,6 +270,24 @@ pub trait ProtoVersionPackets {
         + Send
         + Sync
         + 'static;
+    type ClientBoundMatchmakingStatePacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type ClientBoundPlayAudioContentPacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type ClientBoundStonecutterSetRecipePacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
     type ClientBoundTextureShiftPacket: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
@@ -1014,6 +1032,12 @@ pub trait ProtoVersionPackets {
         + Send
         + Sync
         + 'static;
+    type ServerBoundCursorItemDragPacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
     type ServerBoundDataDrivenClosedPacket: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
@@ -1038,7 +1062,25 @@ pub trait ProtoVersionPackets {
         + Send
         + Sync
         + 'static;
+    type ServerBoundMatchmakingCancelPacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
     type ServerBoundPackSettingChangePacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type ServerBoundRegisterAudioContentPacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type ServerBoundStonecutterSetRecipePacket: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
         + Send
@@ -1153,6 +1195,12 @@ pub trait ProtoVersionPackets {
         + Sync
         + 'static;
     type SetMovementAuthorityPacket: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type SetPassengerOfBlockPacket: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
         + Send
@@ -1791,6 +1839,12 @@ pub trait ProtoVersionTypes {
         + Send
         + Sync
         + 'static;
+    type ItemReleaseTransactionData: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
     type ItemStackRequestNetworkItemInstanceDescriptor: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
@@ -1816,6 +1870,18 @@ pub trait ProtoVersionTypes {
         + Sync
         + 'static;
     type ItemStackResponseSlotInfo: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type ItemUseOnEntityTransactionData: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type ItemUseTransactionData: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
         + Send
@@ -1911,6 +1977,12 @@ pub trait ProtoVersionTypes {
         + Send
         + Sync
         + 'static;
+    type PassengerOfBlockArguments: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
     type PlayerBlockActionData: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
@@ -1984,6 +2056,12 @@ pub trait ProtoVersionTypes {
         + Sync
         + 'static;
     type ShulkerBoxRecipe: bedrock_protocol_core::ProtoCodec
+        + Clone
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + 'static;
+    type SignedAudioContent: bedrock_protocol_core::ProtoCodec
         + Clone
         + std::fmt::Debug
         + Send
@@ -2767,7 +2845,11 @@ mod v1001;
 pub use v1001::*;
 mod v2168;
 pub use v2168::*;
+mod v2168hotfix4;
+pub use v2168hotfix4::*;
 mod v2169;
 pub use v2169::*;
 mod v2193;
 pub use v2193::*;
+mod v2225;
+pub use v2225::*;

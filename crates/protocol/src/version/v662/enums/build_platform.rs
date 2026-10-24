@@ -23,5 +23,6 @@ pub enum BuildPlatform {
     #[deprecated]
     WindowsPhone = 14,
     Linux = 15,
-    Unknown = -1,
+    #[enum_fallback]
+    Unknown(i32),
 }

@@ -1,12 +1,18 @@
+use bedrock::auth::Login;
 use bedrock::core::world::dimension::Dimension;
 use bedrock::network::compression::Compression;
-use bedrock::network::connection::Connection;
-use bedrock::network::listener::Listener;
+use bedrock::network::login::{LoginOptions, NetworkSettings, begin_encryption, check_protocol};
+use bedrock::network::tokio::Connection;
+use bedrock::network::tokio::Listener;
+use bedrock::network::tokio::error::ConnectionError;
+use bedrock::protocol::v662::enums::PacketCompressionAlgorithm;
 use bedrock::protocol::v662::enums::{
     ChatRestrictionLevel, Difficulty, EditorWorldType, GamePublishSetting, GameType, GeneratorType,
-    PacketCompressionAlgorithm, PlayStatus, SpawnBiomeType,
+    PlayStatus, SpawnBiomeType,
 };
-use bedrock::protocol::v662::packets::{NetworkSettingsPacket, PlayStatusPacket};
+use bedrock::protocol::v662::packets::{
+    NetworkSettingsPacket, PlayStatusPacket, ServerToClientHandshakePacket,
+};
 use bedrock::protocol::v662::types::{
     ActorRuntimeID, ActorUniqueID, BaseGameVersion, EduSharedUriResource, Experiments,
     NetworkPermissions, SpawnSettings,
@@ -17,32 +23,101 @@ use bedrock::protocol::v944::packets::VoxelShapesPacket;
 use bedrock::protocol::v944::types::NetworkBlockPosition;
 use bedrock::protocol::v2168::enums::EducationEditionOffer;
 use bedrock::protocol::v2168::packets::ResourcePacksInfoPacket;
-use bedrock::protocol::{ProtoVersion, Unknown, V2193};
+use bedrock::protocol::{ProtoVersion, Unknown, V2225};
 use bedrock_protocol::v2168::packets::StartGamePacket;
-use bedrock_protocol::v2168::types::{GameRuleLegacyData, LevelSettings};
+use bedrock_protocol::v2225::types::{
+    EditorLevelMigrationVersion, GameRuleLegacyData, LevelSettings,
+};
 use std::collections::HashMap;
 use tokio::time::Instant;
 use uuid::Uuid;
 
-type Protocol = V2193;
+type Protocol = V2225;
+
+const PROTOCOL: i32 = Protocol::PROTOCOL_VERSION as i32;
+
+async fn recv_one(conn: &mut Connection<Protocol>) -> Result<Protocol, ConnectionError> {
+    let batch = conn.recv().await?;
+    batch
+        .into_iter()
+        .next()
+        .ok_or(ConnectionError::ConnectionClosed)
+}
+
+fn play_status(status: PlayStatus) -> Protocol {
+    Protocol::PlayStatusPacket(Box::new(PlayStatusPacket { status }))
+}
+
+async fn login(
+    conn: &mut Connection<Protocol>,
+) -> Result<Login, Box<dyn std::error::Error + Send + Sync>> {
+    let settings = NetworkSettings::default();
+    let options = LoginOptions::default().require_authentication(false);
+
+    let Protocol::RequestNetworkSettingsPacket(request) = recv_one(conn).await? else {
+        return Err("expected a network settings request".into());
+    };
+    if let Err(error) = check_protocol(request.client_network_version, PROTOCOL) {
+        let status = if request.client_network_version < PROTOCOL {
+            PlayStatus::LoginFailedClientOld
+        } else {
+            PlayStatus::LoginFailedServerOld
+        };
+        conn.send(&[play_status(status)]).await?;
+        return Err(error.into());
+    }
+
+    let algorithm = match settings.compression {
+        Compression::Zlib { .. } => PacketCompressionAlgorithm::ZLib,
+        Compression::Snappy { .. } => PacketCompressionAlgorithm::Snappy,
+        Compression::None => PacketCompressionAlgorithm::None,
+    };
+    conn.send(&[Protocol::NetworkSettingsPacket(Box::new(
+        NetworkSettingsPacket {
+            compression_threshold: settings.threshold(),
+            compression_algorithm: algorithm,
+            client_throttle_enabled: false,
+            client_throttle_threshold: 0,
+            client_throttle_scalar: 0.0,
+        },
+    ))])
+    .await?;
+    conn.enable_compression(settings.compression);
+
+    let Protocol::LoginPacket(packet) = recv_one(conn).await? else {
+        return Err("expected a login".into());
+    };
+    check_protocol(packet.client_network_version, PROTOCOL)?;
+
+    let login = options.verify(&packet.connection_request)?;
+    let (token, encryption) = begin_encryption(&login)?;
+    conn.send(&[Protocol::ServerToClientHandshakePacket(Box::new(
+        ServerToClientHandshakePacket {
+            handshake_web_token: token,
+        },
+    ))])
+    .await?;
+    conn.enable_encryption(encryption);
+
+    let Protocol::ClientToServerHandshakePacket(_) = recv_one(conn).await? else {
+        return Err("expected the client handshake".into());
+    };
+    conn.send(&[play_status(PlayStatus::LoginSuccess)]).await?;
+    Ok(login)
+}
 
 #[tokio::main]
 async fn main() {
-    let mut listener = Listener::new_raknet(
-        "127.0.0.1:19132".parse().unwrap(),
-        "Bedrock in Rust".to_string(),
-        "bedrock-rs".to_string(),
-        Protocol::GAME_VERSION.to_string(),
-        Protocol::PROTOCOL_VERSION,
-        Protocol::RAKNET_VERSION,
-        100,
-        10,
-        false,
-    )
-    .await
-    .unwrap();
-
-    listener.start().await.unwrap();
+    let mut listener = Listener::builder()
+        .raknet("127.0.0.1:19132".parse().unwrap())
+        .name("Bedrock in Rust")
+        .sub_name("bedrock-rs")
+        .protocol::<Protocol>()
+        .max_players(100)
+        .player_count(10)
+        .bind()
+        .await
+        .unwrap();
 
     loop {
         let conn = listener.accept().await.unwrap();
@@ -53,51 +128,21 @@ async fn main() {
     }
 }
 
-async fn handle_login(mut unknown_conn: Connection<Unknown>) {
+async fn handle_login(unknown_conn: Connection<Unknown>) {
     let time_start = Instant::now();
 
-    // RequestNetworkSettings
-    let packets = unknown_conn.recv().await.unwrap();
-    let mut conn = match packets.first() {
-        Some(Unknown::RequestNetworkSettingsPacket(request))
-            if request.client_network_version == Protocol::PROTOCOL_VERSION as i32 =>
-        {
-            unknown_conn.into_ver::<Protocol>()
-        }
-        _ => {
-            unknown_conn.close().await;
+    let mut conn = unknown_conn.into_ver::<Protocol>();
+    let login = match login(&mut conn).await {
+        Ok(login) => login,
+        Err(error) => {
+            println!("Login failed: {error}");
+            conn.close().await;
             return;
         }
     };
-
-    println!("RequestNetworkSettings");
-
-    let compression = Compression::None;
-
-    // NetworkSettings
-    conn.send(&[Protocol::NetworkSettingsPacket(Box::new(
-        NetworkSettingsPacket {
-            compression_threshold: 1,
-            compression_algorithm: PacketCompressionAlgorithm::None,
-            client_throttle_enabled: false,
-            client_throttle_threshold: 0,
-            client_throttle_scalar: 0.0,
-        },
-    ))])
-    .await
-    .unwrap();
-    println!("NetworkSettings");
-
-    conn.compression = Some(compression);
-
-    // Login
-    conn.recv().await.unwrap();
-    println!("Login");
+    println!("Login: {}", login.authentication.identity().display_name);
 
     conn.send(&[
-        Protocol::PlayStatusPacket(Box::new(PlayStatusPacket {
-            status: PlayStatus::LoginSuccess,
-        })),
         Protocol::ResourcePacksInfoPacket(Box::new(ResourcePacksInfoPacket {
             resource_pack_required: false,
             has_addon_packs: false,
@@ -120,7 +165,6 @@ async fn handle_login(mut unknown_conn: Connection<Unknown>) {
     ])
     .await
     .unwrap();
-    println!("PlayStatus (LoginSuccess)");
     println!("ResourcePacksInfo");
     println!("ResourcePackStack");
 
@@ -164,6 +208,7 @@ async fn handle_login(mut unknown_conn: Connection<Unknown>) {
             editor_world_type: EditorWorldType::NonEditor,
             is_created_in_editor: false,
             is_exported_from_editor: false,
+            editor_level_migration_version: EditorLevelMigrationVersion::Legacy,
             day_cycle_stop_time: 2000,
             education_edition_offer: EducationEditionOffer::None,
             education_features_enabled: false,

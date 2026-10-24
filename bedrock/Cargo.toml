@@ -10,14 +10,14 @@ bedrock_macros = { path = "../crates/macros", optional = true }
 bedrock_form = { path = "../crates/form", optional = true }
 bedrock_protocol = { path = "../crates/protocol", optional = true }
 bedrock_protocol_core = { path = "../crates/protocol_core", optional = true }
-bedrock_network = { path = "../crates/network", optional = true }
+bedrock_network = { path = "../crates/network", optional = true, default-features = false }
 bedrock_level = { path = "../crates/level", optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
-uuid = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tokio.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [features]
 auth = ["dep:bedrock_auth"]
@@ -26,12 +26,16 @@ protocol = [
     "dep:bedrock_protocol_core",
     "dep:bedrock_macros",
 ]
-network = ["dep:bedrock_network", "protocol"]
+network = ["dep:bedrock_network", "protocol", "auth"]
+network-tokio = ["network", "bedrock_network/tokio"]
+network-nethernet = ["network", "bedrock_network/nethernet"]
+network-nethernet-tokio = ["network-nethernet", "network-tokio", "bedrock_network/nethernet-tokio"]
 level = ["dep:bedrock_level"]
-full = ["level", "network", "protocol", "auth"]
+full = ["level", "network-nethernet-tokio", "protocol", "auth"]
 form = ["dep:bedrock_form"]
 
-auth-async = ["bedrock_auth/async"]
+auth-ureq = ["auth", "bedrock_auth/ureq"]
+auth-reqwest = ["auth", "bedrock_auth/reqwest"]
 
 protocol-unknown = ["bedrock_protocol/unknown"]
 protocol-v662 = ["bedrock_protocol/v662"]
@@ -56,14 +60,22 @@ protocol-v944 = ["bedrock_protocol/v944"]
 protocol-v975 = ["bedrock_protocol/v975"]
 protocol-v1001 = ["bedrock_protocol/v1001"]
 protocol-v2168 = ["bedrock_protocol/v2168"]
+protocol-v2168hotfix4 = ["bedrock_protocol/v2168hotfix4"]
 protocol-v2169 = ["bedrock_protocol/v2169"]
-protocol-v2193 = ["bedrock_protocol/v2193"]
+protocol-v2193 = ["bedrock_protocol/v2193", "bedrock_network?/v2193"]
+protocol-v2225 = ["bedrock_protocol/v2225"]
 protocol-all = ["bedrock_protocol/all"]
 
 protocol-packet-dyn = ["bedrock_protocol/packet-dyn"]
 protocol-packet-meta = ["bedrock_protocol/packet-meta"]
+protocol-packet-trace = ["bedrock_protocol/packet-trace"]
 
 [[example]]
 name = "server"
 path = "examples/server.rs"
-required-features = ["network", "protocol-v2193", "protocol-unknown"]
+required-features = ["network-tokio", "protocol-v2225", "protocol-unknown"]
+
+[[example]]
+name = "client"
+path = "examples/client.rs"
+required-features = ["network-tokio", "protocol-v2225", "protocol-unknown"]

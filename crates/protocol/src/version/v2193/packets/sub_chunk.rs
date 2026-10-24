@@ -4,7 +4,7 @@ use bedrock_protocol_core::error::ProtoCodecError;
 use bedrock_protocol_core::{ProtoCodec, ProtoCodecVAR};
 use std::io::{Read, Write};
 
-#[packet(id = 174)]
+#[packet(id = 174, direction = "server_to_client")]
 #[derive(ProtoCodec, Clone, Debug)]
 pub struct SubChunkPacket<V: ProtoVersion> {
     pub cache_enabled: bool,
@@ -58,7 +58,7 @@ pub struct HeightMapData {
 
 impl HeightMapData {
     pub const RUN_LENGTH: usize = 16;
-    pub const RUN_COUNT: usize = 17;
+    pub const RUN_COUNT: usize = 16;
 }
 
 impl ProtoCodec for HeightMapData {

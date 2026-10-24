@@ -3,7 +3,7 @@ use crate::ProtoVersion;
 use bedrock_macros::{ProtoCodec, packet};
 use uuid::Uuid;
 
-#[packet(id = 11)]
+#[packet(id = 11, direction = "server_to_client")]
 #[derive(ProtoCodec, Clone, Debug)]
 pub struct StartGamePacket<V: ProtoVersion> {
     pub target_actor_id: V::ActorUniqueID,
@@ -35,10 +35,10 @@ pub struct StartGamePacket<V: ProtoVersion> {
     pub server_enabled_client_side_generation: bool,
     pub block_network_ids_are_hashes: bool,
     pub network_permissions: V::NetworkPermissions,
-    pub server_join_information: Option<ServerJoinInformation>,
+    pub server_join_information: Option<ServerJoinInformation<V>>,
     pub server_id: String,
-    pub world_id: String,
     pub scenario_id: String,
+    pub world_id: String,
     pub owner_id: String,
 }
 
@@ -50,16 +50,6 @@ pub struct BlockProperty {
 }
 
 #[derive(ProtoCodec, Clone, Debug)]
-pub struct ServerJoinInformation {
-    pub gathering_join_info: Option<GatheringJoinInfo>,
-}
-
-#[derive(ProtoCodec, Clone, Debug)]
-pub struct GatheringJoinInfo {
-    pub experience_id: String,
-    pub experience_name: String,
-    pub experience_world_id: String,
-    pub experience_world_name: String,
-    pub creator_id: String,
-    pub store_id: String,
+pub struct ServerJoinInformation<V: ProtoVersion> {
+    pub gathering_join_info: Option<V::GatheringsConfig>,
 }

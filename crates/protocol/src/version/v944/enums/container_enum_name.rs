@@ -71,4 +71,6 @@ pub enum ContainerEnumName {
     RecipeFoodContainer = 64,
     RecipeBlocksContainer = 65,
     RecipeFurnaceItemsContainer = 66,
+    #[enum_fallback]
+    Unknown(i8),
 }

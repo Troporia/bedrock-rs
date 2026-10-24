@@ -6,6 +6,7 @@ macro_rules! export {
 }
 
 export!(actor_event);
+export!(client_bound_attribute_layer_sync);
 export!(graphics_parameter_override);
 export!(inventory_slot);
 export!(level_sound_event);

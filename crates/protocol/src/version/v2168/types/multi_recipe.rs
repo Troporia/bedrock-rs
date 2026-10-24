@@ -5,5 +5,5 @@ use uuid::Uuid;
 pub struct MultiRecipe {
     pub multi_recipe_id: Uuid,
     #[endianness(var)]
-    pub network_id: i32,
+    pub network_id: u32,
 }

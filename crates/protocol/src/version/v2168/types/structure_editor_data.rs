@@ -3,7 +3,8 @@ use bedrock_macros::ProtoCodec;
 
 #[derive(ProtoCodec, Clone, Debug)]
 pub struct StructureEditorData<V: ProtoVersion> {
-    pub structure_name: V::RedactableString,
+    pub structure_name: String,
+    pub filtered_structure_name: String,
     pub data_field: String,
     pub include_players: bool,
     pub show_bounding_box: bool,

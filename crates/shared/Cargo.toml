@@ -7,8 +7,6 @@ edition.workspace = true
 bedrock_protocol_core = { path = "../protocol_core" }
 bedrock_macros = { path = "../macros" }
 
-tracing = { workspace = true }
-
-byteorder = { workspace = true }
-varint-rs = { workspace = true }
+tracing.workspace = true
+byteorder.workspace = true
 facet.workspace = true

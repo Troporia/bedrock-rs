@@ -6,7 +6,7 @@ use std::cmp::PartialEq;
 use std::io::{Read, Write};
 use std::mem::size_of;
 
-#[packet(id = 174)]
+#[packet(id = 174, direction = "server_to_client")]
 #[derive(Clone, Debug)]
 pub struct SubChunkPacket<V: ProtoVersion> {
     pub cache_enabled: bool,
@@ -85,7 +85,7 @@ impl<V: ProtoVersion> ProtoCodec for SubChunkPacket<V> {
         let center_pos = V::SubChunkPos::deserialize(stream)?;
         let sub_chunk_data = {
             let len = <u32 as ProtoCodecLE>::deserialize(stream)?;
-            let mut vec = Vec::with_capacity(len.try_into()?);
+            let mut vec = Vec::new();
             for _ in 0..len {
                 let sub_chunk_pos_offset = V::SubChunkPosOffset::deserialize(stream)?;
                 let sub_chunk_request_result = SubChunkRequestResult::deserialize(stream)?;
